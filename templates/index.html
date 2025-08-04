@@ -5,12 +5,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Agent</title>
+    <link rel="stylesheet" href="static/style.css">
 </head>
 
 <body>
-    <h1>Hello</h1>
-    <p>This is a simple web application powered by FastAPI.</p>
-    <button onclick="handleClick()">Click Me!</button>
+    <div class="container">
+        <h1>Voice Agent</h1>
+
+        <div class="input-section">
+            <label for="text">Enter your text:</label>
+            <textarea name="text" id="text" placeholder="Type or paste the text you want to convert to speech..."
+                rows="4" maxlength="1000" autofocus></textarea>
+        </div>
+
+        <div class="button-section">
+            <button id="generateAudio" onclick="generateAudio()">Generate Audio</button>
+        </div>
+
+        <!-- Audio Player -->
+        <div id="audioSection" class="audio-section hidden">
+            <audio id="audio" controls></audio>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message hidden">
+            <span id="errorText">Something went wrong. Please try again.</span>
+        </div>
+    </div>
+
     <script src="static/script.js"></script>
 </body>
 

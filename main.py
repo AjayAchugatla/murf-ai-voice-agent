@@ -5,9 +5,20 @@ from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from murf import Murf
 import os
-# import httpx
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+
 load_dotenv()
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],           
+    allow_credentials=True,
+    allow_methods=["*"],      
+    allow_headers=["*"],      
+)
+class Input(BaseModel):
+    text: str
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -18,12 +29,14 @@ def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/tts")
-async def text_to_speech(text: str = Form(...)):
+async def text_to_speech(input : Input):
     client = Murf(
         api_key=os.getenv("MURF_API_KEY")
     )
     res = client.text_to_speech.generate(
-        text=text,
+        text=input.text,
         voice_id="en-US-natalie",
     )
-    return res.audio_file
+    return JSONResponse(content={
+        "audio_url": res.audio_file,
+    })
