@@ -63,13 +63,6 @@ label {
     color: #aaa;
 }
 
-.char-counter {
-    text-align: right;
-    margin-top: 5px;
-    font-size: 0.9rem;
-    color: #ccc;
-}
-
 /* Button Section */
 .button-section {
     text-align: center;
@@ -103,12 +96,6 @@ button:disabled {
     margin-bottom: 20px;
 }
 
-#audio {
-    width: 100%;
-    max-width: 400px;
-    background-color: #404040;
-}
-
 /* Error Message */
 .error-message {
     background-color: #5a2d2d;
@@ -124,6 +111,7 @@ button:disabled {
 .hidden {
     display: none !important;
 }
+
 
 /* Responsive Design */
 @media (max-width: 768px) {

@@ -11,7 +11,6 @@
 <body>
     <div class="container">
         <h1>Voice Agent</h1>
-
         <div class="input-section">
             <label for="text">Enter your text:</label>
             <textarea name="text" id="text" placeholder="Type or paste the text you want to convert to speech..."
@@ -24,7 +23,7 @@
 
         <!-- Audio Player -->
         <div id="audioSection" class="audio-section hidden">
-            <audio id="audio" controls></audio>
+            <audio id="generatedAudio" controls></audio>
         </div>
 
         <!-- Error Message -->
@@ -32,7 +31,16 @@
             <span id="errorText">Something went wrong. Please try again.</span>
         </div>
     </div>
-
+    <div class="container">
+        <h1>Echo Bot</h1>
+        <div class="button-section">
+            <button id="start" onclick="recordAudio()">Start Recording</button>
+            <button id="stop" onclick="stopRecording()" disabled>Stop Recording</button>
+        </div>
+        <div id="audioSection" class="audio-section hidden">
+            <audio id="recordedAudio" controls></audio>
+        </div>
+    </div>
     <script src="static/script.js"></script>
 </body>
 
