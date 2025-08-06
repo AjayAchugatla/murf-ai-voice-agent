@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Form, Request
+import shutil
+from fastapi import FastAPI, Form, Request,File, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -10,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 app = FastAPI()
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],           
@@ -40,3 +45,15 @@ async def text_to_speech(input : Input):
     return JSONResponse(content={
         "audio_url": res.audio_file,
     })
+
+@app.post("/upload-audio")
+def upload_audio(audioFile:UploadFile = File(...)):
+    file_location = os.path.join(UPLOAD_DIR, audioFile.filename)
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(audioFile.file, buffer)
+    return JSONResponse(content={
+        "name": audioFile.filename,
+        "type": audioFile.content_type,
+        "size": os.path.getsize(file_location)
+    })
+    

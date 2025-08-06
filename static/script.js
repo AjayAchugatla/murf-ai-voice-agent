@@ -8,6 +8,7 @@ const errorText = document.getElementById('errorText');
 const startButton = document.getElementById('start');
 const stopButton = document.getElementById('stop');
 const recordedAudioElement = document.querySelector('#recordedAudio');
+const uploadSuccessMessage = document.getElementById('uploadSuccessMessage');
 let mediaRecorder;
 
 let currentAudioUrl = null;
@@ -92,13 +93,13 @@ const recordAudio = () => {
             )
             .then((stream) => {
                 mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.onstop = (e) => {
+                mediaRecorder.onstop = async (e) => {
                     console.log("Recording stopped.");
                     const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
                     chunks = [];
                     const audioURL = window.URL.createObjectURL(blob);
                     recordedAudioElement.src = audioURL;
-
+                    await sendToserver(blob);
                     // Show the container instead of just the audio element
                     const recordedAudioSection = recordedAudioElement.parentElement;
                     showElement(recordedAudioSection);
@@ -128,4 +129,24 @@ const stopRecording = () => {
     startButton.disabled = false;
     stopButton.disabled = true;
     mediaRecorder.stop();
+}
+
+const sendToserver = async (blob) => {
+    const formData = new FormData();
+    const name = 'recorded_audio_' + Date.now() + '.webm';
+    formData.append('audioFile', blob, name);
+    try {
+        const resp = await fetch("http://localhost:8000/upload-audio", {
+            method: "POST",
+            body: formData
+        });
+        const respData = await resp.json();
+        if (respData.name) {
+            showElement(uploadSuccessMessage);
+            uploadSuccessMessage.textContent = `Audio uploaded successfully: ${respData.name} - ${respData.size} bytes`;
+        }
+    } catch (error) {
+        console.error('Error uploading audio:', error);
+        showError('Failed to upload audio. Please try again.');
+    }
 }
