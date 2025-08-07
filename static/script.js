@@ -9,6 +9,7 @@ const startButton = document.getElementById('start');
 const stopButton = document.getElementById('stop');
 const recordedAudioElement = document.querySelector('#recordedAudio');
 const uploadSuccessMessage = document.getElementById('uploadSuccessMessage');
+const transcriptElement = document.getElementById('transcript');
 let mediaRecorder;
 
 let currentAudioUrl = null;
@@ -37,6 +38,9 @@ function showError(message) {
 function resetUI() {
     hideElement(audioSection);
     hideElement(errorMessage);
+    hideElement(uploadSuccessMessage);
+    hideElement(transcriptElement);
+    generatedAudioElement.src = '';
     generateBtn.disabled = false;
     generateBtn.textContent = 'Generate Audio';
 }
@@ -79,6 +83,7 @@ const generateAudio = async () => {
 };
 
 const recordAudio = () => {
+    resetUI();
     startButton.disabled = true;
     stopButton.disabled = false;
     hideElement(recordedAudioElement.parentElement);
@@ -95,15 +100,16 @@ const recordAudio = () => {
                 mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.onstop = async (e) => {
                     console.log("Recording stopped.");
-                    const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
+                    const blob = new Blob(chunks, { type: "audio/webm" });
                     chunks = [];
                     const audioURL = window.URL.createObjectURL(blob);
                     recordedAudioElement.src = audioURL;
-                    await sendToserver(blob);
+                    // await sendToserver(blob);
                     // Show the container instead of just the audio element
                     const recordedAudioSection = recordedAudioElement.parentElement;
                     showElement(recordedAudioSection);
-
+                    // Transcribe the audio
+                    await transcribeAudio(blob);
                     stream.getTracks().forEach(track => {
                         track.stop();
                     });
@@ -149,4 +155,28 @@ const sendToserver = async (blob) => {
         console.error('Error uploading audio:', error);
         showError('Failed to upload audio. Please try again.');
     }
+}
+
+const transcribeAudio = async (blob) => {
+    try {
+        const formData = new FormData();
+        const name = 'transcribed_audio_' + Date.now() + '.webm';
+        formData.append('audioFile', blob, name);
+
+        const response = await fetch("http://localhost:8000/transcribe/file", {
+            method: "POST",
+            body: formData
+        });
+        const data = await response.json();
+        if (data.transcript) {
+            transcriptElement.textContent = `Transcript: ${data.transcript}`;
+            showElement(transcriptElement);
+        } else {
+            showError('Transcription failed. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error transcribing audio:', error);
+        showError(`Transcription error: ${error.message}`);
+    }
+
 }

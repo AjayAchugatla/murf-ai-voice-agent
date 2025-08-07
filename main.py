@@ -8,9 +8,11 @@ from murf import Murf
 import os
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import assemblyai as aai
 
 load_dotenv()
 app = FastAPI()
+aai.settings.api_key = os.getenv("AssemblyAI_API_KEY")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -56,4 +58,12 @@ def upload_audio(audioFile:UploadFile = File(...)):
         "type": audioFile.content_type,
         "size": os.path.getsize(file_location)
     })
-    
+
+@app.post("/transcribe/file")
+async def transcribe_file(audioFile:UploadFile = File(...)):
+    data = await audioFile.read()
+    transcriber =  aai.Transcriber()
+    transcript = transcriber.transcribe(data)
+    return JSONResponse(content={
+        "transcript": transcript.text,
+    })
