@@ -1,5 +1,4 @@
-import shutil
-from fastapi import FastAPI, Form, Request,File, UploadFile
+from fastapi import FastAPI,  Request, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,6 +15,9 @@ aai.settings.api_key = os.getenv("AssemblyAI_API_KEY")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+transcriber = aai.Transcriber()
+murf_client = Murf(api_key=os.getenv("MURF_API_KEY"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,10 +39,7 @@ def read_root(request: Request):
 
 @app.post("/tts")
 async def text_to_speech(input : Input):
-    client = Murf(
-        api_key=os.getenv("MURF_API_KEY")
-    )
-    res = client.text_to_speech.generate(
+    res = murf_client.text_to_speech.generate(
         text=input.text,
         voice_id="en-US-natalie",
     )
@@ -49,21 +48,35 @@ async def text_to_speech(input : Input):
     })
 
 @app.post("/upload-audio")
-def upload_audio(audioFile:UploadFile = File(...)):
+async def upload_audio(audioFile:UploadFile = File(...)):
     file_location = os.path.join(UPLOAD_DIR, audioFile.filename)
     with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(audioFile.file, buffer)
+        content = await audioFile.read()
+        buffer.write(content)
     return JSONResponse(content={
         "name": audioFile.filename,
         "type": audioFile.content_type,
-        "size": os.path.getsize(file_location)
+        "size": len(content)
     })
 
 @app.post("/transcribe/file")
 async def transcribe_file(audioFile:UploadFile = File(...)):
     data = await audioFile.read()
-    transcriber =  aai.Transcriber()
     transcript = transcriber.transcribe(data)
     return JSONResponse(content={
         "transcript": transcript.text,
     })
+
+@app.post("/tts/echo")
+async def text_to_speech_echo(audioFile: UploadFile = File(...)):
+    data = await audioFile.read()
+    transcript = transcriber.transcribe(data)
+    res = murf_client.text_to_speech.generate(
+        text=transcript.text,
+        voice_id="en-US-natalie",
+    )
+    return JSONResponse(content={
+        "audio_url": res.audio_file,
+        "transcript": transcript.text,
+    })
+        

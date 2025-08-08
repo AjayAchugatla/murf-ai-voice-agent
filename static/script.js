@@ -102,14 +102,16 @@ const recordAudio = () => {
                     console.log("Recording stopped.");
                     const blob = new Blob(chunks, { type: "audio/webm" });
                     chunks = [];
-                    const audioURL = window.URL.createObjectURL(blob);
-                    recordedAudioElement.src = audioURL;
+                    // const audioURL = window.URL.createObjectURL(blob);
+                    // recordedAudioElement.src = audioURL;
                     // await sendToserver(blob);
                     // Show the container instead of just the audio element
-                    const recordedAudioSection = recordedAudioElement.parentElement;
-                    showElement(recordedAudioSection);
+                    // const recordedAudioSection = recordedAudioElement.parentElement;
+                    // showElement(recordedAudioSection);
                     // Transcribe the audio
-                    await transcribeAudio(blob);
+                    // await transcribeAudio(blob);
+
+                    await convertToMURF(blob);
                     stream.getTracks().forEach(track => {
                         track.stop();
                     });
@@ -178,5 +180,21 @@ const transcribeAudio = async (blob) => {
         console.error('Error transcribing audio:', error);
         showError(`Transcription error: ${error.message}`);
     }
+}
 
+const convertToMURF = async (blob) => {
+    const formData = new FormData();
+    formData.append('audioFile', blob, 'murf_audio.webm');
+    try {
+        const response = await fetch("http://localhost:8000/tts/echo", {
+            method: "POST",
+            body: formData
+        })
+        const data = await response.json();
+        recordedAudioElement.src = data.audio_url;
+        const recordedAudioSection = recordedAudioElement.parentElement;
+        showElement(recordedAudioSection);
+    } catch (error) {
+        console.error('Error converting audio to MURF:', error);
+    }
 }
