@@ -8,6 +8,7 @@ import os
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import assemblyai as aai
+from google import genai
 
 load_dotenv()
 app = FastAPI()
@@ -18,6 +19,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 transcriber = aai.Transcriber()
 murf_client = Murf(api_key=os.getenv("MURF_API_KEY"))
+client = genai.Client()
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,3 +82,11 @@ async def text_to_speech_echo(audioFile: UploadFile = File(...)):
         "transcript": transcript.text,
     })
         
+@app.post("/llm/query")
+async def llm_query(prompt:Input):
+    response = client.models.generate_content(
+    model="gemini-2.5-flash", contents=prompt)
+
+    return JSONResponse(content={
+        "response": response.text
+    })
