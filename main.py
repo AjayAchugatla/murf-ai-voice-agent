@@ -83,10 +83,18 @@ async def text_to_speech_echo(audioFile: UploadFile = File(...)):
     })
         
 @app.post("/llm/query")
-async def llm_query(prompt:Input):
+async def llm_query(audioFile: UploadFile = File(...)):
+    data = await audioFile.read()
+    transcript = transcriber.transcribe(data)
     response = client.models.generate_content(
-    model="gemini-2.5-flash", contents=prompt)
-
+    model="gemini-2.5-flash", contents=transcript.text)
+    llmResponse = response.text
+    audioResponse = murf_client.text_to_speech.generate(
+        text=llmResponse,
+        voice_id="en-US-natalie",
+    )
     return JSONResponse(content={
-        "response": response.text
+        "query": transcript.text,
+        "response": llmResponse,
+        "audio_url": audioResponse.audio_file,
     })

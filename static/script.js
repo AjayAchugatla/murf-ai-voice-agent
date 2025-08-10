@@ -10,6 +10,9 @@ const stopButton = document.getElementById('stop');
 const recordedAudioElement = document.querySelector('#recordedAudio');
 const uploadSuccessMessage = document.getElementById('uploadSuccessMessage');
 const transcriptElement = document.getElementById('transcript');
+const queryElement = document.getElementById('query');
+const responseAudioElement = document.getElementById('responseAudio');
+
 let mediaRecorder;
 
 let currentAudioUrl = null;
@@ -40,6 +43,8 @@ function resetUI() {
     hideElement(errorMessage);
     hideElement(uploadSuccessMessage);
     hideElement(transcriptElement);
+    hideElement(queryElement);
+    hideElement(responseAudioElement);
     generatedAudioElement.src = '';
     generateBtn.disabled = false;
     generateBtn.textContent = 'Generate Audio';
@@ -110,8 +115,8 @@ const recordAudio = () => {
                     // showElement(recordedAudioSection);
                     // Transcribe the audio
                     // await transcribeAudio(blob);
-
-                    await convertToMURF(blob);
+                    // await convertToMURF(blob);
+                    await llmAudioResponse(blob);
                     stream.getTracks().forEach(track => {
                         track.stop();
                     });
@@ -192,9 +197,28 @@ const convertToMURF = async (blob) => {
         })
         const data = await response.json();
         recordedAudioElement.src = data.audio_url;
-        const recordedAudioSection = recordedAudioElement.parentElement;
-        showElement(recordedAudioSection);
+        showElement(recordedAudioElement);
     } catch (error) {
         console.error('Error converting audio to MURF:', error);
+    }
+}
+
+const llmAudioResponse = async (blob) => {
+    const formData = new FormData();
+    formData.append('audioFile', blob, 'llm_audio.webm');
+    try {
+        console.log('Sending audio file to LLM endpoint...');
+        const response = await fetch("http://localhost:8000/llm/query", {
+            method: "POST",
+            body: formData
+        })
+        console.log('LLM endpoint response:');
+        const data = await response.json();
+        queryElement.textContent = `Query: ${data.query}`;
+        responseAudioElement.src = data.audio_url;
+        showElement(responseAudioElement);
+        showElement(queryElement);
+    } catch (error) {
+        console.error('Error converting audio to LLM response:', error);
     }
 }
