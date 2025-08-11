@@ -31,6 +31,8 @@ app.add_middleware(
 class Input(BaseModel):
     text: str
 
+sessionStorage = {}
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
@@ -96,5 +98,35 @@ async def llm_query(audioFile: UploadFile = File(...)):
     return JSONResponse(content={
         "query": transcript.text,
         "response": llmResponse,
+        "audio_url": audioResponse.audio_file,
+    })
+
+@app.post("/agent/chat/{session_id}")
+async def agent_chat(session_id:str,audioFile: UploadFile = File(...)):
+    data = await audioFile.read()
+    transcript = transcriber.transcribe(data)
+    if session_id in sessionStorage:
+        sessionStorage[session_id].append({"role": "user", "content": transcript.text})
+    else:
+        sessionStorage[session_id] = [{"role": "user", "content": transcript.text}]
+
+    conversation_text = ""
+    for msg in sessionStorage[session_id]:
+        if msg["role"] == "user":
+            conversation_text += f"User: {msg['content']}\n"
+        else:
+            conversation_text += f"Assistant: {msg['content']}\n"
+
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash", contents=conversation_text
+    )
+    sessionStorage[session_id].append({"role": "assistant", "content": resp.text})
+    audioResponse = murf_client.text_to_speech.generate(
+        text=resp.text,
+        voice_id="en-US-natalie",
+    )
+    return JSONResponse(content={
+        "query": transcript.text,
+        "response": resp.text,
         "audio_url": audioResponse.audio_file,
     })

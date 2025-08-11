@@ -90,6 +90,16 @@ button:disabled {
     opacity: 0.6;
 }
 
+/* Stop Conversation Button */
+#stopConversation {
+    background-color: #dc3545;
+    margin-left: 10px;
+}
+
+#stopConversation:hover {
+    background-color: #c82333;
+}
+
 /* Audio Section */
 .audio-section {
     text-align: center;

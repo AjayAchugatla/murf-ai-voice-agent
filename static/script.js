@@ -116,7 +116,8 @@ const recordAudio = () => {
                     // Transcribe the audio
                     // await transcribeAudio(blob);
                     // await convertToMURF(blob);
-                    await llmAudioResponse(blob);
+                    // await llmAudioResponse(blob);
+                    await agentChat(blob);
                     stream.getTracks().forEach(track => {
                         track.stop();
                     });
@@ -221,4 +222,55 @@ const llmAudioResponse = async (blob) => {
     } catch (error) {
         console.error('Error converting audio to LLM response:', error);
     }
+}
+
+const agentChat = async (blob) => {
+    const formData = new FormData();
+    formData.append('audioFile', blob, 'agent_chat_audio.webm');
+    const sessionId = '1';
+    try {
+        const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
+            method: "POST",
+            body: formData
+        });
+        const data = await response.json();
+        queryElement.textContent = `Query: ${data.query}`;
+        responseAudioElement.src = data.audio_url;
+        showElement(responseAudioElement);
+        showElement(queryElement);
+        responseAudioElement.play();
+    } catch (error) {
+        console.error('Error converting audio to agent chat response:', error);
+    }
+}
+
+responseAudioElement.addEventListener('ended', () => {
+    recordAudio();
+})
+
+// Stop conversation function
+const stopConversation = () => {
+    // Stop any ongoing recording
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.onstop = null;
+        mediaRecorder.stop();
+    }
+
+    // Stop any playing audio
+    if (responseAudioElement && !responseAudioElement.paused) {
+        responseAudioElement.pause();
+        responseAudioElement.currentTime = 0;
+    }
+
+    // Reset UI state
+    resetUI();
+
+    // Reset button states
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    if (mediaRecorder && mediaRecorder.stream) {
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+    // Show confirmation
+    alert('Conversation stopped');
 }
