@@ -179,7 +179,7 @@ const recordAudio = () => {
                 };
 
                 mediaRecorder.start();
-                startButton.textContent = 'Recording...';
+                // startButton.textContent = 'Recording...';
 
             } catch (error) {
                 console.error("MediaRecorder creation failed:", error);
@@ -293,43 +293,25 @@ const llmAudioResponse = async (blob) => {
 const agentChat = async (blob) => {
     const formData = new FormData();
     formData.append('audioFile', blob, 'agent_chat_audio.webm');
-    const sessionId = getSessionId();
+    const sessionId = '1';
 
     try {
         // Show loading state
-        startButton.textContent = 'Processing...';
+        // startButton.textContent = 'Processing...';
         startButton.disabled = true;
-        hideElement(errorMessage);
 
-        const requestFn = async () => {
-            const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
-                method: "POST",
-                body: formData
-            });
+        const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
+            method: "POST",
+            body: formData
+        });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-            }
+        const data = await response.json();
 
-            return response.json();
-        };
+        // Handle both success and error responses
+        // Server always returns audio_url (either response or error audio)
+        // queryElement.textContent = `Query: ${data.query || 'Processing...'}`;
 
-        // Retry the request up to 2 times on failure
-        const data = await retryRequest(requestFn, 2, 1000);
-
-        // Handle successful response
-        if (data.error) {
-            // Server returned an error but still provided a response
-            showError(data.message || 'Service temporarily unavailable');
-            queryElement.textContent = `Query: ${data.query || 'Audio processing failed'}`;
-        } else {
-            // Normal successful response
-            queryElement.textContent = `Query: ${data.query}`;
-            showSuccess('Response received successfully');
-        }
-
-        // Always try to play audio, even if it's a fallback
+        // Always play the audio response (success or error audio)
         if (data.audio_url) {
             responseAudioElement.src = data.audio_url;
             showElement(responseAudioElement);
@@ -337,7 +319,7 @@ const agentChat = async (blob) => {
 
             // Handle audio playback errors
             responseAudioElement.onerror = () => {
-                showError('Audio playback failed. Please try again.');
+                console.error('Audio playback failed');
                 resetButtonState();
             };
 
@@ -345,37 +327,20 @@ const agentChat = async (blob) => {
                 await responseAudioElement.play();
             } catch (playError) {
                 console.error('Audio play error:', playError);
-                showError('Could not play audio response. Check your audio settings.');
                 resetButtonState();
             }
         } else {
-            showError('No audio response received');
             resetButtonState();
         }
 
     } catch (error) {
         console.error('Error in agent chat:', error);
-
-        // Different error messages based on error type
-        let userMessage = 'Something went wrong. ';
-
-        if (isNetworkError(error)) {
-            userMessage += 'Please check your internet connection and try again.';
-        } else if (error.message.includes('500')) {
-            userMessage += 'Our service is temporarily unavailable. Please try again in a moment.';
-        } else if (error.message.includes('503')) {
-            userMessage += 'The voice service is temporarily down. Please try again later.';
-        } else {
-            userMessage += 'Please try recording again.';
-        }
-
-        showError(userMessage);
         resetButtonState();
     }
 }
 
 function resetButtonState() {
-    startButton.textContent = 'Start Recording';
+    // startButton.textContent = 'Start Recording';
     startButton.disabled = false;
 }
 

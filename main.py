@@ -116,6 +116,8 @@ async def text_to_speech(input: Input):
             content={
                 "error": "TTS service failed",
                 "message": error_message,
+                "query": "Text to speech conversion",
+                "response": error_message,
                 "audio_url": error_audio_url
             }
         )
