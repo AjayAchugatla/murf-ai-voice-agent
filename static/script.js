@@ -28,13 +28,45 @@ function hideElement(element) {
     element.classList.add('hidden');
 }
 
-// Show error message
-function showError(message) {
+// Enhanced error handling with user feedback
+function showError(message, isTemporary = true) {
     errorText.textContent = message;
     showElement(errorMessage);
+
+    if (isTemporary) {
+        setTimeout(() => {
+            hideElement(errorMessage);
+        }, 5000);
+    }
+}
+
+function showSuccess(message) {
+    uploadSuccessMessage.textContent = message;
+    uploadSuccessMessage.style.color = '#28a745';
+    showElement(uploadSuccessMessage);
     setTimeout(() => {
-        hideElement(errorMessage);
-    }, 5000);
+        hideElement(uploadSuccessMessage);
+    }, 3000);
+}
+
+// Network error detection
+function isNetworkError(error) {
+    return error.message.includes('fetch') ||
+        error.message.includes('network') ||
+        error.message.includes('Failed to fetch');
+}
+
+// Retry mechanism for failed requests
+async function retryRequest(requestFn, maxRetries = 2, delay = 1000) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await requestFn();
+        } catch (error) {
+            if (i === maxRetries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2; // Exponential backoff
+        }
+    }
 }
 
 // Reset UI state
@@ -92,51 +124,85 @@ const recordAudio = () => {
     startButton.disabled = true;
     stopButton.disabled = false;
     hideElement(recordedAudioElement.parentElement);
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        console.log("getUserMedia supported.");
-        navigator.mediaDevices
-            .getUserMedia(
-                // constraints - only audio needed for this app
-                {
-                    audio: true,
-                },
-            )
-            .then((stream) => {
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.onstop = async (e) => {
-                    console.log("Recording stopped.");
-                    const blob = new Blob(chunks, { type: "audio/webm" });
-                    chunks = [];
-                    // const audioURL = window.URL.createObjectURL(blob);
-                    // recordedAudioElement.src = audioURL;
-                    // await sendToserver(blob);
-                    // Show the container instead of just the audio element
-                    // const recordedAudioSection = recordedAudioElement.parentElement;
-                    // showElement(recordedAudioSection);
-                    // Transcribe the audio
-                    // await transcribeAudio(blob);
-                    // await convertToMURF(blob);
-                    // await llmAudioResponse(blob);
-                    await agentChat(blob);
-                    stream.getTracks().forEach(track => {
-                        track.stop();
-                    });
-                }
-                mediaRecorder.start();
-                mediaRecorder.ondataavailable = (e) => {
-                    chunks.push(e.data);
-                };
 
-            })
-
-            // Error callback
-            .catch((err) => {
-                console.error(`The following getUserMedia error occurred: ${err}`);
-            });
-    } else {
-        console.log("getUserMedia not supported on your browser!");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError("Audio recording is not supported in your browser. Please use a modern browser like Chrome or Firefox.");
+        resetButtonState();
+        return;
     }
 
+    console.log("getUserMedia supported.");
+    navigator.mediaDevices
+        .getUserMedia({
+            audio: true,
+        })
+        .then((stream) => {
+            try {
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.onstop = async (e) => {
+                    console.log("Recording stopped.");
+
+                    try {
+                        const blob = new Blob(chunks, { type: "audio/webm" });
+                        chunks = [];
+
+                        if (blob.size === 0) {
+                            throw new Error("Recording produced no audio data");
+                        }
+
+                        await agentChat(blob);
+
+                    } catch (error) {
+                        console.error("Error processing recording:", error);
+                        showError("Failed to process your recording. Please try again.");
+                        resetButtonState();
+                    } finally {
+                        // Always clean up the stream
+                        stream.getTracks().forEach(track => {
+                            track.stop();
+                        });
+                    }
+                };
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        chunks.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onerror = (error) => {
+                    console.error("MediaRecorder error:", error);
+                    showError("Recording failed. Please check your microphone permissions.");
+                    resetButtonState();
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                startButton.textContent = 'Recording...';
+
+            } catch (error) {
+                console.error("MediaRecorder creation failed:", error);
+                showError("Could not start recording. Please check your microphone permissions.");
+                resetButtonState();
+                stream.getTracks().forEach(track => track.stop());
+            }
+        })
+        .catch((err) => {
+            console.error(`getUserMedia error: ${err}`);
+            let errorMessage = "Could not access your microphone. ";
+
+            if (err.name === 'NotAllowedError') {
+                errorMessage += "Please allow microphone access and try again.";
+            } else if (err.name === 'NotFoundError') {
+                errorMessage += "No microphone found. Please connect a microphone.";
+            } else {
+                errorMessage += "Please check your microphone settings.";
+            }
+
+            showError(errorMessage);
+            resetButtonState();
+        });
 }
 
 const stopRecording = () => {
@@ -227,21 +293,90 @@ const llmAudioResponse = async (blob) => {
 const agentChat = async (blob) => {
     const formData = new FormData();
     formData.append('audioFile', blob, 'agent_chat_audio.webm');
-    const sessionId = '1';
+    const sessionId = getSessionId();
+
     try {
-        const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
-            method: "POST",
-            body: formData
-        });
-        const data = await response.json();
-        queryElement.textContent = `Query: ${data.query}`;
-        responseAudioElement.src = data.audio_url;
-        showElement(responseAudioElement);
-        showElement(queryElement);
-        responseAudioElement.play();
+        // Show loading state
+        startButton.textContent = 'Processing...';
+        startButton.disabled = true;
+        hideElement(errorMessage);
+
+        const requestFn = async () => {
+            const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
+                method: "POST",
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return response.json();
+        };
+
+        // Retry the request up to 2 times on failure
+        const data = await retryRequest(requestFn, 2, 1000);
+
+        // Handle successful response
+        if (data.error) {
+            // Server returned an error but still provided a response
+            showError(data.message || 'Service temporarily unavailable');
+            queryElement.textContent = `Query: ${data.query || 'Audio processing failed'}`;
+        } else {
+            // Normal successful response
+            queryElement.textContent = `Query: ${data.query}`;
+            showSuccess('Response received successfully');
+        }
+
+        // Always try to play audio, even if it's a fallback
+        if (data.audio_url) {
+            responseAudioElement.src = data.audio_url;
+            showElement(responseAudioElement);
+            showElement(queryElement);
+
+            // Handle audio playback errors
+            responseAudioElement.onerror = () => {
+                showError('Audio playback failed. Please try again.');
+                resetButtonState();
+            };
+
+            try {
+                await responseAudioElement.play();
+            } catch (playError) {
+                console.error('Audio play error:', playError);
+                showError('Could not play audio response. Check your audio settings.');
+                resetButtonState();
+            }
+        } else {
+            showError('No audio response received');
+            resetButtonState();
+        }
+
     } catch (error) {
-        console.error('Error converting audio to agent chat response:', error);
+        console.error('Error in agent chat:', error);
+
+        // Different error messages based on error type
+        let userMessage = 'Something went wrong. ';
+
+        if (isNetworkError(error)) {
+            userMessage += 'Please check your internet connection and try again.';
+        } else if (error.message.includes('500')) {
+            userMessage += 'Our service is temporarily unavailable. Please try again in a moment.';
+        } else if (error.message.includes('503')) {
+            userMessage += 'The voice service is temporarily down. Please try again later.';
+        } else {
+            userMessage += 'Please try recording again.';
+        }
+
+        showError(userMessage);
+        resetButtonState();
     }
+}
+
+function resetButtonState() {
+    startButton.textContent = 'Start Recording';
+    startButton.disabled = false;
 }
 
 responseAudioElement.addEventListener('ended', () => {
