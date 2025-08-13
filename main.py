@@ -9,11 +9,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import assemblyai as aai
 from google import genai
-import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 load_dotenv()
 app = FastAPI()
@@ -42,7 +38,6 @@ async def generate_error_voice(error_message: str) -> str:
         else:
             return FALLBACK_AUDIO_URL
     except Exception as e:
-        logger.error(f"Failed to generate error voice: {e}")
         return FALLBACK_AUDIO_URL
 
 load_dotenv()
@@ -52,23 +47,17 @@ app = FastAPI()
 try:
     aai.settings.api_key = os.getenv("AssemblyAI_API_KEY")
     transcriber = aai.Transcriber()
-    logger.info("AssemblyAI client initialized successfully")
 except Exception as e:
-    logger.error(f"Failed to initialize AssemblyAI: {e}")
     transcriber = None
 
 try:
     murf_client = Murf(api_key=os.getenv("MURF_API_KEY"))
-    logger.info("Murf client initialized successfully")
 except Exception as e:
-    logger.error(f"Failed to initialize Murf: {e}")
     murf_client = None
 
 try:
     client = genai.Client()
-    logger.info("Gemini client initialized successfully") 
 except Exception as e:
-    logger.error(f"Failed to initialize Gemini: {e}")
     client = None
 
 UPLOAD_DIR = "uploads"
@@ -94,33 +83,6 @@ templates = Jinja2Templates(directory="templates")
 def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/tts")
-async def text_to_speech(input: Input):
-    try:
-        if not murf_client:
-            raise HTTPException(status_code=503, detail="TTS service unavailable")
-            
-        res = murf_client.text_to_speech.generate(
-            text=input.text,
-            voice_id="en-US-natalie",
-        )
-        return JSONResponse(content={
-            "audio_url": res.audio_file,
-        })
-    except Exception as e:
-        logger.error(f"TTS error: {e}")
-        error_message = FALLBACK_RESPONSES["tts_error"]
-        error_audio_url = await generate_error_voice(error_message)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "TTS service failed",
-                "message": error_message,
-                "query": "Text to speech conversion",
-                "response": error_message,
-                "audio_url": error_audio_url
-            }
-        )
 
 @app.post("/upload-audio")
 async def upload_audio(audioFile:UploadFile = File(...)):
@@ -174,9 +136,7 @@ async def llm_query(audioFile: UploadFile = File(...)):
 
 @app.post("/agent/chat/{session_id}")
 async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
-    try:
-        logger.info(f"Processing chat request for session: {session_id}")
-        
+    try:    
         # Step 1: Speech-to-Text
         try:
             if not transcriber:
@@ -190,11 +150,9 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             if not transcript.text:
                 raise Exception("Could not transcribe audio")
                 
-            user_message = transcript.text
-            logger.info(f"STT successful: {user_message[:50]}...")
+            user_message = transcript.text            
             
-        except Exception as e:
-            logger.error(f"STT error: {e}")
+        except Exception as e:            
             error_message = FALLBACK_RESPONSES["stt_error"]
             error_audio_url = await generate_error_voice(error_message)
             return JSONResponse(
@@ -223,8 +181,7 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
                 else:
                     conversation_text += f"Assistant: {msg['content']}\n"
                     
-        except Exception as e:
-            logger.error(f"Session management error: {e}")
+        except Exception as e:            
             # Continue with just the current message
             conversation_text = f"User: {user_message}\n"
         
@@ -240,18 +197,16 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             if not resp.text:
                 raise Exception("Empty LLM response")
                 
-            llm_response = resp.text
-            logger.info(f"LLM successful: {llm_response[:50]}...")
+            llm_response = resp.text            
             
-        except Exception as e:
-            logger.error(f"LLM error: {e}")
+        except Exception as e:            
             llm_response = FALLBACK_RESPONSES["llm_error"]
         
         # Step 4: Update conversation with assistant response
         try:
             sessionStorage[session_id].append({"role": "assistant", "content": llm_response})
         except Exception as e:
-            logger.error(f"Failed to update session with assistant response: {e}")
+            pass
         
         # Step 5: Text-to-Speech
         try:
@@ -266,11 +221,9 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             if not audioResponse.audio_file:
                 raise Exception("TTS generated empty audio")
                 
-            audio_url = audioResponse.audio_file
-            logger.info("TTS successful")
+            audio_url = audioResponse.audio_file            
             
-        except Exception as e:
-            logger.error(f"TTS error: {e}")
+        except Exception as e:            
             # Try to generate error voice message, if that fails too, use fallback
             try:
                 audio_url = await generate_error_voice(FALLBACK_RESPONSES["tts_error"])
@@ -284,8 +237,7 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             "audio_url": audio_url,
         })
         
-    except Exception as e:
-        logger.error(f"Unexpected error in agent_chat: {e}")
+    except Exception as e:        
         error_message = FALLBACK_RESPONSES["general_error"]
         error_audio_url = await generate_error_voice(error_message)
         return JSONResponse(

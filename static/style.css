@@ -17,7 +17,10 @@ body {
 .container {
     max-width: 600px;
     margin: 0 auto;
-    padding: 20px;
+    background-color: #3c3c3c;
+    border-radius: 10px;
+    padding: 30px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Heading */
@@ -29,38 +32,12 @@ h1 {
     font-weight: normal;
 }
 
-/* Input Section */
-.input-section {
-    margin-bottom: 20px;
-}
 
 label {
     display: block;
     margin-bottom: 8px;
     color: #ffffff;
     font-size: 1rem;
-}
-
-#text {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #555;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-family: inherit;
-    background-color: #404040;
-    color: #ffffff;
-    resize: vertical;
-    min-height: 100px;
-}
-
-#text:focus {
-    outline: none;
-    border-color: #666;
-}
-
-#text::placeholder {
-    color: #aaa;
 }
 
 /* Button Section */
@@ -78,6 +55,10 @@ button {
     border-radius: 4px;
     cursor: pointer;
     min-width: 150px;
+    margin: 5px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 button:hover {
@@ -122,23 +103,139 @@ button:disabled {
     display: none !important;
 }
 
-
 /* Responsive Design */
+
+/* Tablet and smaller laptops */
+@media (max-width: 1024px) {
+    .container {
+        max-width: 90%;
+        padding: 25px;
+    }
+}
+
+/* Tablets */
 @media (max-width: 768px) {
     .container {
-        padding: 15px;
+        padding: 20px;
+        margin: 15px;
+        border-radius: 8px;
     }
 
     h1 {
         font-size: 1.8rem;
+        margin-bottom: 25px;
     }
 
-    #text {
-        padding: 10px;
+    .button-section {
+        margin-bottom: 25px;
     }
 
     button {
-        padding: 10px 20px;
+        padding: 12px 20px;
+        font-size: 0.95rem;
+        min-width: 140px;
+        margin: 8px 5px;
+    }
+
+    #query {
+        font-size: 20px !important;
+        padding: 12px;
+        margin: 15px 0;
+    }
+}
+
+/* Mobile phones (landscape) */
+@media (max-width: 600px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        padding: 18px;
+        margin: 5px;
+        border-radius: 6px;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+        margin-bottom: 20px;
+    }
+
+    .button-section {
+        margin-bottom: 20px;
+    }
+
+    button {
+        width: 100%;
+        max-width: 280px;
+        padding: 14px 16px;
+        font-size: 1rem;
+        margin: 6px 0;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    #stopConversation {
+        margin-left: auto;
+        margin-top: 10px;
+    }
+
+    #query {
+        font-size: 18px !important;
+        padding: 12px;
+        margin: 15px 0;
+        min-height: 50px;
+    }
+}
+
+/* Small mobile phones (portrait) */
+@media (max-width: 480px) {
+    .container {
+        padding: 15px;
+        margin: 5px;
+    }
+
+    h1 {
+        font-size: 1.4rem;
+        margin-bottom: 18px;
+    }
+
+    button {
+        padding: 12px 14px;
         font-size: 0.9rem;
+        min-width: auto;
+    }
+
+    #query {
+        font-size: 16px !important;
+        padding: 10px;
+        margin: 12px 0;
+        min-height: 45px;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 360px) {
+    .container {
+        padding: 12px;
+        margin: 3px;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+    }
+
+    button {
+        padding: 10px 12px;
+        font-size: 0.85rem;
+    }
+
+    #query {
+        font-size: 15px !important;
+        padding: 8px;
+        margin: 10px 0;
+        min-height: 40px;
     }
 }

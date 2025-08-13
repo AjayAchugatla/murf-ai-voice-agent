@@ -11,40 +11,11 @@
 <body>
     <div class="container">
         <h1>Voice Agent</h1>
-        <div class="input-section">
-            <label for="text">Enter your text:</label>
-            <textarea name="text" id="text" placeholder="Type or paste the text you want to convert to speech..."
-                rows="4" maxlength="1000" autofocus></textarea>
-        </div>
-
-        <div class="button-section">
-            <button id="generateAudio" onclick="generateAudio()">Generate Audio</button>
-        </div>
-
-        <!-- Audio Player -->
-        <div id="audioSection" class="audio-section hidden">
-            <audio id="generatedAudio" controls></audio>
-        </div>
-
-        <!-- Error Message -->
-        <div id="errorMessage" class="error-message hidden">
-            <span id="errorText">Something went wrong. Please try again.</span>
-        </div>
-    </div>
-    <div class="container">
-        <h1>Echo Bot</h1>
         <div class="button-section">
             <button id="start" onclick="recordAudio()">Start Recording</button>
             <button id="stop" onclick="stopRecording()" disabled>Stop Recording</button>
             <button id="stopConversation" onclick="stopConversation()">Stop Conversation</button>
         </div>
-        <p class="hidden" style="text-align: center; font-size:18px; margin-bottom: 10px;" id="uploadSuccessMessage">
-        </p>
-        <div id="audioSection" class="audio-section">
-            <audio id="recordedAudio" class="hidden"></audio>
-            <p id="transcript" class="hidden" style="font-size:28px; margin: 10px 0px;"></p>
-        </div>
-
         <div id="audioSection" class="audio-section">
             <p id="query" class="hidden" style="font-size:28px; margin: 10px 0px;"></p>
             <audio id="responseAudio" controls class="hidden"></audio>
