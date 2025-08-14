@@ -12,18 +12,35 @@
 </head>
 
 <body>
-    <div class="container">
-        <h1>Voice Agent</h1>
-        <div class="button-section">
-            <button id="recordButton" onclick="toggleRecording()" class="record-btn">
-                <span class="btn-icon">🎤</span>
-                <span class="btn-text">Start Recording</span>
-            </button>
-            <button id="stopConversation" onclick="stopConversation()" class="stop-btn">Stop Conversation</button>
+    <div class="main-container">
+        <!-- Left Section - Voice Agent UI -->
+        <div class="voice-agent-section">
+            <div class="container">
+                <h1>Voice Agent</h1>
+                <div class="button-section">
+                    <button id="recordButton" onclick="toggleRecording()" class="record-btn">
+                        <span class="btn-icon">🎤</span>
+                        <span class="btn-text">Start Recording</span>
+                    </button>
+                    <button id="stopConversation" onclick="stopConversation()" class="stop-btn">Stop
+                        Conversation</button>
+                </div>
+                <div id="audioSection" class="audio-section">
+                    <audio id="responseAudio" class="hidden" autoplay></audio>
+                </div>
+            </div>
         </div>
-        <div id="audioSection" class="audio-section">
-            <p id="query" class="hidden"></p>
-            <audio id="responseAudio" class="hidden" autoplay></audio>
+
+        <!-- Right Section - Conversation History -->
+        <div class="conversation-section">
+            <div class="conversation-container">
+                <h2>Conversation</h2>
+                <div id="conversationHistory" class="conversation-history">
+                    <div class="conversation-placeholder">
+                        <p>Your conversation will appear here...</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     <script src="static/script.js"></script>

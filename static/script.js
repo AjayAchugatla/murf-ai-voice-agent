@@ -1,11 +1,12 @@
 // DOM Elements
 const recordButton = document.getElementById('recordButton');
-const queryElement = document.getElementById('query');
 const responseAudioElement = document.getElementById('responseAudio');
+const conversationHistory = document.getElementById('conversationHistory');
 
 let mediaRecorder;
 let isRecording = false;
 let isProcessing = false;
+let isSpeaking = false;
 let chunks = [];
 
 // Show/hide elements
@@ -22,9 +23,47 @@ function showError(message) {
     alert(message);
 }
 
+// Add message to conversation history
+function addMessageToHistory(message, isUser = true) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+
+    // Clean markdown formatting for AI messages inline
+    const cleanedMessage = isUser ? message :
+        message.replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/__(.*?)__/g, '$1')
+            .replace(/_(.*?)_/g, '$1')
+            .replace(/`(.*?)`/g, '$1')
+            .replace(/#{1,6}\s/g, '')
+            .replace(/^\s*[-*+]\s/gm, '')
+            .replace(/^\s*\d+\.\s/gm, '')
+            .trim();
+
+    messageDiv.textContent = cleanedMessage;
+
+    // Remove placeholder if it exists
+    const placeholder = conversationHistory.querySelector('.conversation-placeholder');
+    if (placeholder) {
+        placeholder.remove();
+    }
+
+    conversationHistory.appendChild(messageDiv);
+    conversationHistory.scrollTop = conversationHistory.scrollHeight;
+}
+
+// Clear conversation history
+function clearConversationHistory() {
+    conversationHistory.innerHTML = `
+        <div class="conversation-placeholder">
+            <p>Your conversation will appear here...</p>
+        </div>
+    `;
+}
+
 // Toggle recording function
 function toggleRecording() {
-    if (isProcessing) return;
+    if (isProcessing || isSpeaking) return;
 
     if (!isRecording) {
         startRecording();
@@ -51,6 +90,7 @@ function updateButtonState(state) {
             recordButton.disabled = false;
             isRecording = false;
             isProcessing = false;
+            isSpeaking = false;
             break;
         case 'recording':
             btnIcon.textContent = '⏹️';
@@ -68,12 +108,20 @@ function updateButtonState(state) {
             isRecording = false;
             isProcessing = true;
             break;
+        case 'speaking':
+            btnIcon.textContent = '🔊';
+            btnText.textContent = 'AI Speaking...';
+            recordButton.classList.add('processing');
+            recordButton.disabled = true;
+            isRecording = false;
+            isProcessing = true;
+            isSpeaking = true;
+            break;
     }
 }
 
 // Reset UI state
 function resetUI() {
-    hideElement(queryElement);
     updateButtonState('idle');
 }
 
@@ -183,29 +231,42 @@ const agentChat = async (blob) => {
         const data = await response.json();
 
         if (data.audio_url) {
-            queryElement.textContent = `Query: ${data.query || 'Processing...'}`;
+            // Add user message and AI response to conversation history
+            if (data.query) {
+                addMessageToHistory(data.query, true);
+            }
+            if (data.response) {
+                addMessageToHistory(data.response, false);
+            }
+
             responseAudioElement.src = data.audio_url;
-            showElement(queryElement);
 
             responseAudioElement.onerror = () => {
                 console.error('Audio playback failed');
+                isSpeaking = false;
                 updateButtonState('idle');
             };
 
             responseAudioElement.onended = () => {
+                // Change button back to idle when audio finishes
+                isSpeaking = false;
+                updateButtonState('idle');
+
                 // Auto-start next recording after AI response finishes
                 setTimeout(() => {
-                    if (!isRecording && !isProcessing) {
+                    if (!isRecording && !isProcessing && !isSpeaking) {
                         startRecording();
                     }
                 }, 500);
             };
 
             try {
+                updateButtonState('speaking');
                 await responseAudioElement.play();
-                updateButtonState('idle');
+                // Don't change button state here - let onended handle it
             } catch (playError) {
                 console.error('Audio play error:', playError);
+                isSpeaking = false;
                 updateButtonState('idle');
             }
         } else {
@@ -230,8 +291,10 @@ const stopConversation = () => {
         responseAudioElement.currentTime = 0;
     }
 
+    isSpeaking = false;
     resetUI();
     updateButtonState('idle');
+    clearConversationHistory();
 
     if (mediaRecorder && mediaRecorder.stream) {
         mediaRecorder.stream.getTracks().forEach(track => track.stop());
