@@ -1,69 +1,92 @@
 // DOM Elements
-const startButton = document.getElementById('start');
-const stopButton = document.getElementById('stop');
+const recordButton = document.getElementById('recordButton');
 const queryElement = document.getElementById('query');
 const responseAudioElement = document.getElementById('responseAudio');
 
 let mediaRecorder;
-
-let currentAudioUrl = null;
+let isRecording = false;
+let isProcessing = false;
 let chunks = [];
-
 
 // Show/hide elements
 function showElement(element) {
-    element.classList.remove('hidden');
+    element?.classList.remove('hidden');
 }
 
 function hideElement(element) {
-    element.classList.add('hidden');
+    element?.classList.add('hidden');
 }
 
 function showError(message) {
-    alert(message);
     console.error(message);
+    alert(message);
 }
 
+// Toggle recording function
+function toggleRecording() {
+    if (isProcessing) return;
 
-// Network error detection
-function isNetworkError(error) {
-    return error.message.includes('fetch') ||
-        error.message.includes('network') ||
-        error.message.includes('Failed to fetch');
+    if (!isRecording) {
+        startRecording();
+    } else {
+        stopRecording();
+    }
 }
 
-// Retry mechanism for failed requests
-async function retryRequest(requestFn, maxRetries = 2, delay = 1000) {
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            return await requestFn();
-        } catch (error) {
-            if (i === maxRetries - 1) throw error;
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay *= 2; // Exponential backoff
-        }
+// Update button state
+function updateButtonState(state) {
+    if (!recordButton) return;
+
+    const btnIcon = recordButton.querySelector('.btn-icon');
+    const btnText = recordButton.querySelector('.btn-text');
+
+    if (!btnIcon || !btnText) return;
+
+    recordButton.className = 'record-btn';
+
+    switch (state) {
+        case 'idle':
+            btnIcon.textContent = '🎤';
+            btnText.textContent = 'Start Recording';
+            recordButton.disabled = false;
+            isRecording = false;
+            isProcessing = false;
+            break;
+        case 'recording':
+            btnIcon.textContent = '⏹️';
+            btnText.textContent = 'Stop Recording';
+            recordButton.classList.add('recording');
+            recordButton.disabled = false;
+            isRecording = true;
+            isProcessing = false;
+            break;
+        case 'processing':
+            btnIcon.textContent = '⏳';
+            btnText.textContent = 'Processing...';
+            recordButton.classList.add('processing');
+            recordButton.disabled = true;
+            isRecording = false;
+            isProcessing = true;
+            break;
     }
 }
 
 // Reset UI state
 function resetUI() {
     hideElement(queryElement);
-    hideElement(responseAudioElement);
+    updateButtonState('idle');
 }
 
-
-const recordAudio = () => {
+const startRecording = () => {
     resetUI();
-    startButton.disabled = true;
-    stopButton.disabled = false;
+    updateButtonState('recording');
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         showError("Audio recording is not supported in your browser. Please use a modern browser like Chrome or Firefox.");
-        resetButtonState();
+        updateButtonState('idle');
         return;
     }
 
-    console.log("getUserMedia supported.");
     navigator.mediaDevices
         .getUserMedia({
             audio: true,
@@ -73,7 +96,7 @@ const recordAudio = () => {
                 mediaRecorder = new MediaRecorder(stream);
 
                 mediaRecorder.onstop = async (e) => {
-                    console.log("Recording stopped.");
+                    updateButtonState('processing');
 
                     try {
                         const blob = new Blob(chunks, { type: "audio/webm" });
@@ -88,7 +111,7 @@ const recordAudio = () => {
                     } catch (error) {
                         console.error("Error processing recording:", error);
                         showError("Failed to process your recording. Please try again.");
-                        resetButtonState();
+                        updateButtonState('idle');
                     } finally {
                         // Always clean up the stream
                         stream.getTracks().forEach(track => {
@@ -106,17 +129,16 @@ const recordAudio = () => {
                 mediaRecorder.onerror = (error) => {
                     console.error("MediaRecorder error:", error);
                     showError("Recording failed. Please check your microphone permissions.");
-                    resetButtonState();
+                    updateButtonState('idle');
                     stream.getTracks().forEach(track => track.stop());
                 };
 
                 mediaRecorder.start();
-                // startButton.textContent = 'Recording...';
 
             } catch (error) {
                 console.error("MediaRecorder creation failed:", error);
                 showError("Could not start recording. Please check your microphone permissions.");
-                resetButtonState();
+                updateButtonState('idle');
                 stream.getTracks().forEach(track => track.stop());
             }
         })
@@ -133,14 +155,14 @@ const recordAudio = () => {
             }
 
             showError(errorMessage);
-            resetButtonState();
+            updateButtonState('idle');
         });
 }
 
 const stopRecording = () => {
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    mediaRecorder.stop();
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
 }
 
 const agentChat = async (blob) => {
@@ -149,47 +171,53 @@ const agentChat = async (blob) => {
     const sessionId = '1';
 
     try {
-        startButton.disabled = true;
-
         const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
             method: "POST",
             body: formData
         });
 
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+
         const data = await response.json();
+
         if (data.audio_url) {
             queryElement.textContent = `Query: ${data.query || 'Processing...'}`;
             responseAudioElement.src = data.audio_url;
-            showElement(responseAudioElement);
             showElement(queryElement);
+
             responseAudioElement.onerror = () => {
                 console.error('Audio playback failed');
-                resetButtonState();
+                updateButtonState('idle');
             };
+
+            responseAudioElement.onended = () => {
+                // Auto-start next recording after AI response finishes
+                setTimeout(() => {
+                    if (!isRecording && !isProcessing) {
+                        startRecording();
+                    }
+                }, 500);
+            };
+
             try {
                 await responseAudioElement.play();
+                updateButtonState('idle');
             } catch (playError) {
                 console.error('Audio play error:', playError);
-                resetButtonState();
+                updateButtonState('idle');
             }
         } else {
-            resetButtonState();
+            throw new Error('No audio response received');
         }
 
     } catch (error) {
         console.error('Error in agent chat:', error);
         showError('Failed to process your request. Please try again.');
-        resetButtonState();
+        updateButtonState('idle');
     }
 }
-
-function resetButtonState() {
-    startButton.disabled = false;
-}
-
-responseAudioElement.addEventListener('ended', () => {
-    recordAudio();
-})
 
 const stopConversation = () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -203,12 +231,18 @@ const stopConversation = () => {
     }
 
     resetUI();
+    updateButtonState('idle');
 
-    startButton.disabled = false;
-    stopButton.disabled = true;
     if (mediaRecorder && mediaRecorder.stream) {
         mediaRecorder.stream.getTracks().forEach(track => track.stop());
     }
 
     alert('Conversation stopped');
 }
+
+// Initialize the button state when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    if (recordButton) {
+        updateButtonState('idle');
+    }
+});
