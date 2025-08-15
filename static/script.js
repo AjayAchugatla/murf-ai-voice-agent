@@ -3,32 +3,25 @@ const recordButton = document.getElementById('recordButton');
 const responseAudioElement = document.getElementById('responseAudio');
 const conversationHistory = document.getElementById('conversationHistory');
 
+// State variables
 let mediaRecorder;
 let isRecording = false;
 let isProcessing = false;
 let isSpeaking = false;
 let chunks = [];
 
-// Show/hide elements
-function showElement(element) {
-    element?.classList.remove('hidden');
-}
-
-function hideElement(element) {
-    element?.classList.add('hidden');
-}
-
+// Utility functions
 function showError(message) {
     console.error(message);
     alert(message);
 }
 
-// Add message to conversation history
+// Message management
 function addMessageToHistory(message, isUser = true) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
 
-    // Clean markdown formatting for AI messages inline
+    // Clean markdown formatting for AI messages
     const cleanedMessage = isUser ? message :
         message.replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\*(.*?)\*/g, '$1')
@@ -52,7 +45,6 @@ function addMessageToHistory(message, isUser = true) {
     conversationHistory.scrollTop = conversationHistory.scrollHeight;
 }
 
-// Clear conversation history
 function clearConversationHistory() {
     conversationHistory.innerHTML = `
         <div class="conversation-placeholder">
@@ -61,18 +53,7 @@ function clearConversationHistory() {
     `;
 }
 
-// Toggle recording function
-function toggleRecording() {
-    if (isProcessing || isSpeaking) return;
-
-    if (!isRecording) {
-        startRecording();
-    } else {
-        stopRecording();
-    }
-}
-
-// Update button state
+// Button state management
 function updateButtonState(state) {
     if (!recordButton) return;
 
@@ -120,30 +101,33 @@ function updateButtonState(state) {
     }
 }
 
-// Reset UI state
-function resetUI() {
-    updateButtonState('idle');
+// Recording functions
+function toggleRecording() {
+    if (isProcessing || isSpeaking) return;
+
+    if (!isRecording) {
+        startRecording();
+    } else {
+        stopRecording();
+    }
 }
 
-const startRecording = () => {
-    resetUI();
+function startRecording() {
     updateButtonState('recording');
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia) {
         showError("Audio recording is not supported in your browser. Please use a modern browser like Chrome or Firefox.");
         updateButtonState('idle');
         return;
     }
 
     navigator.mediaDevices
-        .getUserMedia({
-            audio: true,
-        })
+        .getUserMedia({ audio: true })
         .then((stream) => {
             try {
                 mediaRecorder = new MediaRecorder(stream);
 
-                mediaRecorder.onstop = async (e) => {
+                mediaRecorder.onstop = async () => {
                     updateButtonState('processing');
 
                     try {
@@ -161,10 +145,7 @@ const startRecording = () => {
                         showError("Failed to process your recording. Please try again.");
                         updateButtonState('idle');
                     } finally {
-                        // Always clean up the stream
-                        stream.getTracks().forEach(track => {
-                            track.stop();
-                        });
+                        stream.getTracks().forEach(track => track.stop());
                     }
                 };
 
@@ -207,13 +188,14 @@ const startRecording = () => {
         });
 }
 
-const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
+function stopRecording() {
+    if (mediaRecorder?.state === 'recording') {
         mediaRecorder.stop();
     }
 }
 
-const agentChat = async (blob) => {
+// Agent communication
+async function agentChat(blob) {
     const formData = new FormData();
     formData.append('audioFile', blob, 'agent_chat_audio.webm');
     const sessionId = '1';
@@ -231,7 +213,7 @@ const agentChat = async (blob) => {
         const data = await response.json();
 
         if (data.audio_url) {
-            // Add user message and AI response to conversation history
+            // Add messages to conversation history
             if (data.query) {
                 addMessageToHistory(data.query, true);
             }
@@ -248,7 +230,6 @@ const agentChat = async (blob) => {
             };
 
             responseAudioElement.onended = () => {
-                // Change button back to idle when audio finishes
                 isSpeaking = false;
                 updateButtonState('idle');
 
@@ -263,7 +244,6 @@ const agentChat = async (blob) => {
             try {
                 updateButtonState('speaking');
                 await responseAudioElement.play();
-                // Don't change button state here - let onended handle it
             } catch (playError) {
                 console.error('Audio play error:', playError);
                 isSpeaking = false;
@@ -280,8 +260,9 @@ const agentChat = async (blob) => {
     }
 }
 
-const stopConversation = () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
+// Conversation control
+function stopConversation() {
+    if (mediaRecorder?.state === 'recording') {
         mediaRecorder.onstop = null;
         mediaRecorder.stop();
     }
@@ -292,20 +273,17 @@ const stopConversation = () => {
     }
 
     isSpeaking = false;
-    resetUI();
     updateButtonState('idle');
     clearConversationHistory();
 
-    if (mediaRecorder && mediaRecorder.stream) {
+    if (mediaRecorder?.stream) {
         mediaRecorder.stream.getTracks().forEach(track => track.stop());
     }
 
     alert('Conversation stopped');
 }
 
-// Initialize the button state when page loads
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    if (recordButton) {
-        updateButtonState('idle');
-    }
+    updateButtonState('idle');
 });
