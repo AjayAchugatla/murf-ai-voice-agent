@@ -9,6 +9,7 @@ let isRecording = false;
 let isProcessing = false;
 let isSpeaking = false;
 let chunks = [];
+let ws = null;
 
 // Utility functions
 function showError(message) {
@@ -121,6 +122,9 @@ function startRecording() {
         return;
     }
 
+    // Create WebSocket connection
+    ws = new WebSocket("ws://localhost:8000/ws");
+
     navigator.mediaDevices
         .getUserMedia({ audio: true })
         .then((stream) => {
@@ -130,6 +134,11 @@ function startRecording() {
                 mediaRecorder.onstop = async () => {
                     updateButtonState('processing');
 
+                    if (ws) {
+                        // ws.close();
+                        ws = null;
+                    }
+
                     try {
                         const blob = new Blob(chunks, { type: "audio/webm" });
                         chunks = [];
@@ -138,7 +147,7 @@ function startRecording() {
                             throw new Error("Recording produced no audio data");
                         }
 
-                        await agentChat(blob);
+                        // await agentChat(blob);
 
                     } catch (error) {
                         console.error("Error processing recording:", error);
@@ -152,6 +161,11 @@ function startRecording() {
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data.size > 0) {
                         chunks.push(e.data);
+
+                        // Send to WebSocket
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(e.data);
+                        }
                     }
                 };
 
@@ -162,7 +176,7 @@ function startRecording() {
                     stream.getTracks().forEach(track => track.stop());
                 };
 
-                mediaRecorder.start();
+                mediaRecorder.start(1000); // Send data every 1000ms
 
             } catch (error) {
                 console.error("MediaRecorder creation failed:", error);
@@ -186,9 +200,7 @@ function startRecording() {
             showError(errorMessage);
             updateButtonState('idle');
         });
-}
-
-function stopRecording() {
+} function stopRecording() {
     if (mediaRecorder?.state === 'recording') {
         mediaRecorder.stop();
     }
@@ -265,6 +277,11 @@ function stopConversation() {
     if (mediaRecorder?.state === 'recording') {
         mediaRecorder.onstop = null;
         mediaRecorder.stop();
+    }
+
+    if (ws) {
+        ws.close();
+        ws = null;
     }
 
     if (responseAudioElement && !responseAudioElement.paused) {

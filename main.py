@@ -1,3 +1,6 @@
+from datetime import datetime
+import os
+import logging
 from fastapi import FastAPI, Request, File, UploadFile, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,8 +13,21 @@ from schemas import (
 )
 from services import stt_service, tts_service, llm_service
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 load_dotenv()
+logger.info("Starting Murf AI Voice Agent application")
+
 app = FastAPI(
     title="Murf AI Voice Agent",
     description="AI-powered voice agent with speech-to-text, LLM processing, and text-to-speech capabilities",
@@ -56,21 +72,27 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
+    logger.info(f"Root endpoint accessed from {request.client.host}")
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/transcribe/file", response_model=TranscriptionResponse)
 async def transcribe_file(audioFile: UploadFile = File(...)):
+    logger.info(f"Transcription request received - file: {audioFile.filename}, size: {audioFile.size}")
     data = await audioFile.read()
     transcript = await stt_service.transcribe_audio(data)
+    logger.info(f"Transcription completed - length: {len(transcript)} characters")
     return TranscriptionResponse(
         transcript=transcript
     )
 
 @app.post("/tts/echo", response_model=TTSEchoResponse)
 async def text_to_speech_echo(audioFile: UploadFile = File(...)):
+    logger.info(f"TTS Echo request received - file: {audioFile.filename}, size: {audioFile.size}")
     data = await audioFile.read()
     transcript = await stt_service.transcribe_audio(data)
+    logger.info(f"TTS Echo transcription: {transcript[:100]}...")
     audio_url = await tts_service.generate_speech(transcript)
+    logger.info(f"TTS Echo completed - audio URL generated")
     return TTSEchoResponse(
         audio_url=audio_url,
         transcript=transcript
@@ -78,10 +100,14 @@ async def text_to_speech_echo(audioFile: UploadFile = File(...)):
         
 @app.post("/llm/query", response_model=LLMQueryResponse)
 async def llm_query(audioFile: UploadFile = File(...)):
+    logger.info(f"LLM query request received - file: {audioFile.filename}, size: {audioFile.size}")
     data = await audioFile.read()
     transcript = await stt_service.transcribe_audio(data)
+    logger.info(f"LLM query transcription: {transcript[:100]}...")
     llm_response = await llm_service.generate_response(transcript)
+    logger.info(f"LLM response generated: {llm_response[:100]}...")
     audio_url = await tts_service.generate_speech(llm_response)
+    logger.info(f"LLM query completed - audio URL generated")
     return LLMQueryResponse(
         query=transcript,
         response=llm_response,
@@ -90,15 +116,18 @@ async def llm_query(audioFile: UploadFile = File(...)):
 
 @app.post("/agent/chat/{session_id}", response_model=AgentChatResponse, responses={500: {"model": ErrorResponse}})
 async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
+    logger.info(f"Agent chat request - session: {session_id}, file: {audioFile.filename}, size: {audioFile.size}")
     try:    
         try:
             if not stt_service.is_available():
                 raise Exception("STT service unavailable")
                 
             data = await audioFile.read()
-            user_message = await stt_service.transcribe_audio(data)            
+            user_message = await stt_service.transcribe_audio(data)
+            logger.info(f"Session {session_id} - User message: {user_message[:100]}...")
             
-        except Exception as e:            
+        except Exception as e:
+            logger.error(f"Session {session_id} - STT error: {e}")
             error_message = FALLBACK_RESPONSES["stt_error"]
             error_audio_url = await generate_error_voice(error_message)
             return JSONResponse(
@@ -131,9 +160,11 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             if not llm_service.is_available():
                 raise Exception("LLM service unavailable")
                 
-            llm_response = await llm_service.generate_response(conversation_text)            
+            llm_response = await llm_service.generate_response(conversation_text)
+            logger.info(f"Session {session_id} - LLM response: {llm_response[:100]}...")
             
-        except Exception as e:            
+        except Exception as e:
+            logger.error(f"Session {session_id} - LLM error: {e}")
             llm_response = FALLBACK_RESPONSES["llm_error"]
         try:
             sessionStorage[session_id].append({"role": "assistant", "content": llm_response})
@@ -143,21 +174,25 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             if not tts_service.is_available():
                 raise Exception("TTS service unavailable")
                 
-            audio_url = await tts_service.generate_speech(llm_response)            
+            audio_url = await tts_service.generate_speech(llm_response)
+            logger.info(f"Session {session_id} - TTS audio generated successfully")
             
-        except Exception as e:            
+        except Exception as e:
+            logger.error(f"Session {session_id} - TTS error: {e}")
             try:
                 audio_url = await generate_error_voice(FALLBACK_RESPONSES["tts_error"])
             except:
                 audio_url = FALLBACK_AUDIO_URL
         
+        logger.info(f"Session {session_id} - Agent chat completed successfully")
         return AgentChatResponse(
             query=user_message,
             response=llm_response,
             audio_url=audio_url
         )
         
-    except Exception as e:        
+    except Exception as e:
+        logger.error(f"Session {session_id} - General error: {e}")
         error_message = FALLBACK_RESPONSES["general_error"]
         error_audio_url = await generate_error_voice(error_message)
         return JSONResponse(
@@ -174,6 +209,24 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        await websocket.send_text(f"Message text was : {data}")
+    logger.info("WebSocket connection established for audio streaming")
+    
+    os.makedirs("uploads", exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join("uploads", f"{timestamp}_stream.webm")
+    
+    try:
+        with open(file_path, "wb") as f:
+            while True:
+                try:
+                    data = await websocket.receive_bytes()
+                    f.write(data)
+                    logger.debug(f"Received {len(data)} bytes, total file size: {f.tell()} bytes")
+                except Exception as e:
+                    logger.warning(f"Error receiving WebSocket data: {e}")
+                    break
+    except Exception as e:
+        logger.error(f"WebSocket error occurred: {e}")
+    finally:
+        logger.info(f"WebSocket connection closed. Audio saved to: {file_path}")
+        await websocket.close()
