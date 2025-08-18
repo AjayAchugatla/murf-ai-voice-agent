@@ -1,7 +1,14 @@
 import assemblyai as aai
 import os
+import io
 from typing import Optional
 from dotenv import load_dotenv
+import websockets
+import logging
+
+logger = logging.getLogger(__name__)
+
+ASSEMBLYAI_REALTIME_URL = "wss://streaming.assemblyai.com/v3/ws?sample_rate=16000"
 
 load_dotenv()
 class STTService:
@@ -37,5 +44,20 @@ class STTService:
             raise Exception("Could not transcribe audio")
         
         return transcript.text
+
+    async def connect_to_assemblyai(self):
+        api_key = os.getenv("AssemblyAI_API_KEY")
+        if not api_key:
+            raise Exception("AssemblyAI_API_KEY not found in environment")
+
+        import websockets
+        
+        headers = {
+            "Authorization": api_key
+        }
+        return await websockets.connect(
+            ASSEMBLYAI_REALTIME_URL,
+            extra_headers=headers
+        )
 
 stt_service = STTService()

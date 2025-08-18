@@ -10,6 +10,9 @@ let isProcessing = false;
 let isSpeaking = false;
 let chunks = [];
 let ws = null;
+let audioContext = null;
+let mediaStreamSource = null;
+let processor = null;
 
 // Utility functions
 function showError(message) {
@@ -126,61 +129,49 @@ function startRecording() {
     ws = new WebSocket("ws://localhost:8000/ws");
 
     navigator.mediaDevices
-        .getUserMedia({ audio: true })
+        .getUserMedia({
+            audio: {
+                sampleRate: 16000,
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        })
         .then((stream) => {
             try {
-                mediaRecorder = new MediaRecorder(stream);
+                audioContext = new (window.AudioContext)({
+                    sampleRate: 16000
+                });
+                mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                const bufferSize = 4096;
+                processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
 
-                mediaRecorder.onstop = async () => {
-                    updateButtonState('processing');
-
-                    if (ws) {
-                        // ws.close();
-                        ws = null;
+                processor.onaudioprocess = (audioProcessingEvent) => {
+                    if (!isRecording || !ws || ws.readyState !== WebSocket.OPEN) {
+                        return;
                     }
 
-                    try {
-                        const blob = new Blob(chunks, { type: "audio/webm" });
-                        chunks = [];
+                    const inputBuffer = audioProcessingEvent.inputBuffer;
+                    const inputData = inputBuffer.getChannelData(0);
 
-                        if (blob.size === 0) {
-                            throw new Error("Recording produced no audio data");
-                        }
-
-                        // await agentChat(blob);
-
-                    } catch (error) {
-                        console.error("Error processing recording:", error);
-                        showError("Failed to process your recording. Please try again.");
-                        updateButtonState('idle');
-                    } finally {
-                        stream.getTracks().forEach(track => track.stop());
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        const sample = Math.max(-1, Math.min(1, inputData[i]));
+                        pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
                     }
+
+                    ws.send(pcmData.buffer);
                 };
 
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        chunks.push(e.data);
+                mediaStreamSource.connect(processor);
+                processor.connect(audioContext.destination);
 
-                        // Send to WebSocket
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(e.data);
-                        }
-                    }
-                };
-
-                mediaRecorder.onerror = (error) => {
-                    console.error("MediaRecorder error:", error);
-                    showError("Recording failed. Please check your microphone permissions.");
-                    updateButtonState('idle');
-                    stream.getTracks().forEach(track => track.stop());
-                };
-
-                mediaRecorder.start(1000); // Send data every 1000ms
+                processor.audioStream = stream;
 
             } catch (error) {
-                console.error("MediaRecorder creation failed:", error);
-                showError("Could not start recording. Please check your microphone permissions.");
+                console.error("Audio processing setup failed:", error);
+                showError("Could not start audio processing. Please try again.");
                 updateButtonState('idle');
                 stream.getTracks().forEach(track => track.stop());
             }
@@ -200,10 +191,39 @@ function startRecording() {
             showError(errorMessage);
             updateButtonState('idle');
         });
-} function stopRecording() {
-    if (mediaRecorder?.state === 'recording') {
-        mediaRecorder.stop();
+}
+
+function stopRecording() {
+    if (!isRecording) return;
+
+    isRecording = false;
+    updateButtonState('idle');
+
+    if (processor) {
+        processor.disconnect();
+        processor = null;
     }
+
+    if (mediaStreamSource) {
+        mediaStreamSource.disconnect();
+        mediaStreamSource = null;
+    }
+
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+
+    if (processor?.audioStream) {
+        processor.audioStream.getTracks().forEach(track => track.stop());
+    }
+
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+
+    console.log("PCM audio streaming stopped");
 }
 
 // Agent communication
@@ -272,11 +292,25 @@ async function agentChat(blob) {
     }
 }
 
-// Conversation control
+
 function stopConversation() {
-    if (mediaRecorder?.state === 'recording') {
-        mediaRecorder.onstop = null;
-        mediaRecorder.stop();
+    if (isRecording) {
+        stopRecording();
+    }
+
+    if (processor) {
+        processor.disconnect();
+        processor = null;
+    }
+
+    if (mediaStreamSource) {
+        mediaStreamSource.disconnect();
+        mediaStreamSource = null;
+    }
+
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
     }
 
     if (ws) {
@@ -292,10 +326,6 @@ function stopConversation() {
     isSpeaking = false;
     updateButtonState('idle');
     clearConversationHistory();
-
-    if (mediaRecorder?.stream) {
-        mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    }
 
     alert('Conversation stopped');
 }

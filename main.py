@@ -1,5 +1,4 @@
-from datetime import datetime
-import os
+import asyncio
 import logging
 from fastapi import FastAPI, Request, File, UploadFile, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -12,6 +11,7 @@ from schemas import (
     LLMQueryResponse, AgentChatResponse, ErrorResponse
 )
 from services import stt_service, tts_service, llm_service
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -211,22 +211,42 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established for audio streaming")
     
-    os.makedirs("uploads", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = os.path.join("uploads", f"{timestamp}_stream.webm")
-    
     try:
-        with open(file_path, "wb") as f:
-            while True:
-                try:
-                    data = await websocket.receive_bytes()
-                    f.write(data)
-                    logger.debug(f"Received {len(data)} bytes, total file size: {f.tell()} bytes")
-                except Exception as e:
-                    logger.warning(f"Error receiving WebSocket data: {e}")
-                    break
+        assembly_ws = await stt_service.connect_to_assemblyai()
+        logger.info("Connected to AssemblyAI streaming service")
+
+        async def receive_audio():
+            try:
+                while True:
+                    pcm_chunk = await websocket.receive_bytes()
+                    if pcm_chunk and len(pcm_chunk) > 0:
+                        await assembly_ws.send(pcm_chunk)
+                    
+            except Exception as e:
+                logger.warning(f"Error receiving WebSocket data: {e}")
+
+        async def send_transcripts():
+            try:
+                while True:
+                    result = await assembly_ws.recv()
+                    try:
+                        data = json.loads(result)
+                        if data.get("transcript"):
+                            transcript_text = data["transcript"]
+                            print(f"Transcript: {transcript_text}")
+                            
+                    except json.JSONDecodeError:
+                        logger.debug(f"Non-JSON message: {result}")
+                        
+            except Exception as e:
+                logger.error(f"Error receiving transcripts: {e}")
+
+        await asyncio.gather(receive_audio(), send_transcripts())
+        
     except Exception as e:
-        logger.error(f"WebSocket error occurred: {e}")
+        logger.error(f"WebSocket connection error: {e}")
     finally:
-        logger.info(f"WebSocket connection closed. Audio saved to: {file_path}")
-        await websocket.close()
+        try:
+            await assembly_ws.close()
+        except:
+            pass
