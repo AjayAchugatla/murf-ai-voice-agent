@@ -226,15 +226,50 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.warning(f"Error receiving WebSocket data: {e}")
 
         async def send_transcripts():
+            import json
             try:
                 while True:
                     result = await assembly_ws.recv()
                     try:
                         data = json.loads(result)
-                        if data.get("transcript"):
+                        if data.get("type") == "Turn" and data.get("transcript"):
                             transcript_text = data["transcript"]
                             print(f"Transcript: {transcript_text}")
-                            
+
+                            if data.get("end_of_turn", False):
+                                print(f"Turn Complete: {transcript_text}")
+
+                                turn_message = {
+                                    "type": "turn_complete",
+                                    "transcript": transcript_text,
+                                    "confidence": data.get("end_of_turn_confidence", 0),
+                                    "turn_order": data.get("turn_order", 0)
+                                }
+                                await websocket.send_text(json.dumps(turn_message))
+                        
+                        elif data.get("type") == "PartialTranscript" and data.get("text"):
+                            transcript_text = data["text"]
+                            print(f"Partial: {transcript_text}")
+
+                            partial_message = {
+                                "type": "partial_transcript",
+                                "transcript": transcript_text
+                            }
+                            await websocket.send_text(json.dumps(partial_message))
+                        
+                        elif data.get("type") == "FinalTranscript" and data.get("text"):
+                            transcript_text = data["text"]
+                            print(f"Final: {transcript_text}")
+                            final_message = {
+                                "type": "final_transcript", 
+                                "transcript": transcript_text
+                            }
+                            await websocket.send_text(json.dumps(final_message))
+
+                        elif data.get("transcript"):
+                            transcript_text = data["transcript"]
+                            print(f"Transcript: {transcript_text}")
+
                     except json.JSONDecodeError:
                         logger.debug(f"Non-JSON message: {result}")
                         

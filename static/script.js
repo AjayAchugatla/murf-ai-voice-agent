@@ -105,6 +105,32 @@ function updateButtonState(state) {
     }
 }
 
+// Transcript message handling
+function handleTranscriptMessage(message) {
+    console.log("Received transcript message:", message);
+
+    switch (message.type) {
+        case 'turn_complete':
+            console.log(`🔄 Turn ${message.turn_order} complete: "${message.transcript}"`);
+            addMessageToHistory(message.transcript, true); // Add as user message
+            break;
+
+        case 'partial_transcript':
+            // Real-time partial transcript - could show in a temporary element
+            console.log(`⏳ Partial: "${message.transcript}"`);
+            break;
+
+        case 'final_transcript':
+            console.log(`✅ Final: "${message.transcript}"`);
+            addMessageToHistory(message.transcript, true);
+            break;
+
+        default:
+            console.log("Unknown message type:", message.type);
+    }
+}
+
+
 // Recording functions
 function toggleRecording() {
     if (isProcessing || isSpeaking) return;
@@ -127,6 +153,29 @@ function startRecording() {
 
     // Create WebSocket connection
     ws = new WebSocket("ws://localhost:8000/ws");
+
+    // WebSocket event handlers
+    ws.onopen = () => {
+        console.log("✅ WebSocket connected for PCM streaming");
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            handleTranscriptMessage(message);
+        } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        showError("Connection error. Please try again.");
+    };
+
+    ws.onclose = (event) => {
+        console.log("WebSocket connection closed:", event.code, event.reason);
+    };
 
     navigator.mediaDevices
         .getUserMedia({
@@ -199,6 +248,12 @@ function stopRecording() {
     isRecording = false;
     updateButtonState('idle');
 
+    // Clean up partial transcript display
+    const partialElement = document.getElementById('partial-transcript');
+    if (partialElement) {
+        partialElement.remove();
+    }
+
     if (processor) {
         processor.disconnect();
         processor = null;
@@ -223,7 +278,7 @@ function stopRecording() {
         ws = null;
     }
 
-    console.log("PCM audio streaming stopped");
+    console.log("🛑 PCM audio streaming stopped");
 }
 
 // Agent communication
@@ -296,6 +351,12 @@ async function agentChat(blob) {
 function stopConversation() {
     if (isRecording) {
         stopRecording();
+    }
+
+    // Clean up partial transcript display
+    const partialElement = document.getElementById('partial-transcript');
+    if (partialElement) {
+        partialElement.remove();
     }
 
     if (processor) {
