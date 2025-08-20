@@ -238,14 +238,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             if data.get("end_of_turn", False):
                                 print(f"Turn Complete: {transcript_text}")
-
-                                turn_message = {
-                                    "type": "turn_complete",
-                                    "transcript": transcript_text,
-                                    "confidence": data.get("end_of_turn_confidence", 0),
-                                    "turn_order": data.get("turn_order", 0)
-                                }
-                                await websocket.send_text(json.dumps(turn_message))
+                                llm_response = await llm_service.generate_response(transcript_text)
+                                print(f"LLM Response: {llm_response}")
+                                # turn_message = {
+                                #     "type": "turn_complete",
+                                #     "transcript": transcript_text,
+                                #     "confidence": data.get("end_of_turn_confidence", 0),
+                                #     "turn_order": data.get("turn_order", 0)
+                                # }
+                                # await websocket.send_text(json.dumps(turn_message))
                         
                         elif data.get("type") == "PartialTranscript" and data.get("text"):
                             transcript_text = data["text"]
