@@ -70,7 +70,7 @@ function updateButtonState(state) {
 
     switch (state) {
         case 'idle':
-            btnIcon.textContent = '🎤';
+            btnIcon.textContent = 'REC';
             btnText.textContent = 'Start Recording';
             recordButton.disabled = false;
             isRecording = false;
@@ -78,7 +78,7 @@ function updateButtonState(state) {
             isSpeaking = false;
             break;
         case 'recording':
-            btnIcon.textContent = '⏹️';
+            btnIcon.textContent = 'STOP';
             btnText.textContent = 'Stop Recording';
             recordButton.classList.add('recording');
             recordButton.disabled = false;
@@ -86,7 +86,7 @@ function updateButtonState(state) {
             isProcessing = false;
             break;
         case 'processing':
-            btnIcon.textContent = '⏳';
+            btnIcon.textContent = '...';
             btnText.textContent = 'Processing...';
             recordButton.classList.add('processing');
             recordButton.disabled = true;
@@ -111,17 +111,17 @@ function handleTranscriptMessage(message) {
 
     switch (message.type) {
         case 'turn_complete':
-            console.log(`🔄 Turn ${message.turn_order} complete: "${message.transcript}"`);
+            console.log(`Turn ${message.turn_order} complete: "${message.transcript}"`);
             addMessageToHistory(message.transcript, true); // Add as user message
             break;
 
         case 'partial_transcript':
             // Real-time partial transcript - could show in a temporary element
-            console.log(`⏳ Partial: "${message.transcript}"`);
+            console.log(`Partial: "${message.transcript}"`);
             break;
 
         case 'final_transcript':
-            console.log(`✅ Final: "${message.transcript}"`);
+            console.log(`Final: "${message.transcript}"`);
             addMessageToHistory(message.transcript, true);
             break;
 
@@ -156,7 +156,7 @@ function startRecording() {
 
     // WebSocket event handlers
     ws.onopen = () => {
-        console.log("✅ WebSocket connected for PCM streaming");
+        console.log("WebSocket connected for PCM streaming");
     };
 
     ws.onmessage = (event) => {

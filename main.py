@@ -215,6 +215,46 @@ async def websocket_endpoint(websocket: WebSocket):
         assembly_ws = await stt_service.connect_to_assemblyai()
         logger.info("Connected to AssemblyAI streaming service")
 
+        # Helper function to process LLM streaming response and TTS
+        async def process_llm_streaming(transcript_text: str):
+            """Process transcript with LLM streaming, then convert to speech with Murf WebSocket"""
+            try:
+                print(f"\nGenerating LLM response for: '{transcript_text}'")
+                
+                if not llm_service.is_available():
+                    print("LLM service unavailable")
+                    return
+                
+                accumulated_response = ""
+                print("LLM Response: ", end="", flush=True)
+                
+                # Stream the LLM response
+                async for chunk in llm_service.generate_streaming_response(transcript_text):
+                    print(chunk, end="", flush=True)
+                    accumulated_response += chunk
+                
+                print(f"\nLLM Response Complete: {len(accumulated_response)} characters")
+                
+                # Now send the complete response to Murf for TTS
+                if accumulated_response and tts_service.is_available():
+                    print(f"\nConverting to speech: '{accumulated_response[:50]}{'...' if len(accumulated_response) > 50 else ''}'")
+                    
+                    try:
+                        # Use streaming TTS with Murf WebSocket
+                        base64_audio = await tts_service.generate_streaming_speech(accumulated_response)
+                        print(f"TTS Complete - Base64 Audio Length: {len(base64_audio)} characters")
+                        print(f"Base64 Audio Data: {base64_audio}")
+                        
+                    except Exception as tts_error:
+                        print(f"TTS Error: {tts_error}")
+                else:
+                    print("TTS service unavailable or empty response")
+                
+                print("=" * 80)  # Separator for clarity
+                
+            except Exception as e:
+                print(f"Error in LLM streaming: {e}")
+
         async def receive_audio():
             try:
                 while True:
@@ -238,15 +278,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             if data.get("end_of_turn", False):
                                 print(f"Turn Complete: {transcript_text}")
-                                llm_response = await llm_service.generate_response(transcript_text)
-                                print(f"LLM Response: {llm_response}")
-                                # turn_message = {
-                                #     "type": "turn_complete",
-                                #     "transcript": transcript_text,
-                                #     "confidence": data.get("end_of_turn_confidence", 0),
-                                #     "turn_order": data.get("turn_order", 0)
-                                # }
-                                # await websocket.send_text(json.dumps(turn_message))
+                                
+                                # Trigger LLM streaming response and TTS
+                                asyncio.create_task(process_llm_streaming(transcript_text))
+                                
+                                turn_message = {
+                                    "type": "turn_complete",
+                                    "transcript": transcript_text,
+                                    "confidence": data.get("end_of_turn_confidence", 0),
+                                    "turn_order": data.get("turn_order", 0)
+                                }
+                                await websocket.send_text(json.dumps(turn_message))
                         
                         elif data.get("type") == "PartialTranscript" and data.get("text"):
                             transcript_text = data["text"]

@@ -57,7 +57,7 @@ class STTService:
         }
         return await websockets.connect(
             ASSEMBLYAI_REALTIME_URL,
-            extra_headers=headers
+            additional_headers=headers
         )
 
 stt_service = STTService()

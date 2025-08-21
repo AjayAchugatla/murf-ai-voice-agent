@@ -41,5 +41,30 @@ class LLMService:
         
         return response.text
 
+    async def generate_streaming_response(self, prompt: str):
+        """Generate streaming response from LLM"""
+        if not self.client:
+            raise Exception("LLM service unavailable")
+        
+        if not prompt or prompt.strip() == "":
+            raise Exception("Empty prompt provided")
+        
+        try:
+            # Use the streaming API if available
+            response = self.client.models.generate_content_stream(
+                model=self.model_name, 
+                contents=prompt
+            )
+            
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+                    
+        except Exception as e:
+            print(f"Streaming failed, falling back to regular generation: {e}")
+            # Fallback to regular generation
+            regular_response = await self.generate_response(prompt)
+            yield regular_response
+
 
 llm_service = LLMService()
