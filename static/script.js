@@ -105,6 +105,9 @@ function updateButtonState(state) {
     }
 }
 
+// Audio chunks storage
+let audioChunks = [];
+
 // Transcript message handling
 function handleTranscriptMessage(message) {
     console.log("Received transcript message:", message);
@@ -123,6 +126,22 @@ function handleTranscriptMessage(message) {
         case 'final_transcript':
             console.log(`Final: "${message.transcript}"`);
             addMessageToHistory(message.transcript, true);
+            break;
+
+        case 'audio_chunk':
+            console.log(`Received audio chunk: ${message.chunk_size} characters`);
+            console.log(`Audio chunk acknowledgment: Successfully received base64 audio data`);
+            audioChunks.push(message.audio_data);
+            console.log(`Total audio chunks accumulated: ${audioChunks.length}`);
+            break;
+
+        case 'audio_complete':
+            console.log(`Audio streaming complete! Total chunks: ${audioChunks.length}`);
+            console.log(`Combined base64 audio length: ${audioChunks.join('').length} characters`);
+            console.log(`Audio acknowledgment: All audio chunks received and accumulated successfully`);
+
+            // Optionally clear chunks after processing
+            // audioChunks = [];
             break;
 
         default:

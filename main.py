@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import websockets
 from fastapi import FastAPI, Request, File, UploadFile, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +13,7 @@ from schemas import (
 )
 from services import stt_service, tts_service, llm_service
 import json
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -206,6 +208,82 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             )
         )
 
+async def stream_tts_to_client(websocket: WebSocket, text: str):
+    """Stream TTS audio chunks from Murf to client via WebSocket"""
+    if not tts_service.is_available():
+        print("TTS service unavailable")
+        return
+    
+    api_key = os.getenv("MURF_API_KEY")
+    if not api_key:
+        print("MURF_API_KEY not found")
+        return
+    
+    voice = tts_service.default_voice_id
+    
+    try:
+        # Connect to Murf's WebSocket streaming endpoint
+        murf_ws_url = f"wss://api.murf.ai/v1/speech/stream-input?api-key={api_key}&sample_rate=44100&channel_type=MONO&format=WAV"
+        
+        async with websockets.connect(murf_ws_url) as murf_websocket:
+            # Send voice configuration first
+            voice_config_msg = {
+                "voice_config": {
+                    "voiceId": voice,
+                    "style": "Conversational",
+                    "rate": 0,
+                    "pitch": 0,
+                    "variation": 1
+                }
+            }
+            await murf_websocket.send(json.dumps(voice_config_msg))
+            print("Sent voice config to Murf WebSocket")
+            
+            # Send text message
+            text_msg = {
+                "text": text,
+                "end": True  # This closes the context
+            }
+            await murf_websocket.send(json.dumps(text_msg))
+            print(f"Sent text to Murf WebSocket: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+            
+            # Stream audio chunks to client as they arrive from Murf
+            try:
+                while True:
+                    response = await murf_websocket.recv()
+                    data = json.loads(response)
+                    print(f"Received from Murf: {data.keys() if isinstance(data, dict) else 'non-dict response'}")
+                    
+                    if "audio" in data:
+                        audio_chunk = data["audio"]
+                        print(f"Streaming audio chunk to client ({len(audio_chunk)} characters)")
+                        
+                        # Send audio chunk to client
+                        audio_message = {
+                            "type": "audio_chunk",
+                            "audio_data": audio_chunk,
+                            "chunk_size": len(audio_chunk)
+                        }
+                        await websocket.send_text(json.dumps(audio_message))
+                        print(f"Sent audio chunk to client: {len(audio_chunk)} characters")
+                    
+                    if data.get("final"):
+                        print("Received final audio chunk from Murf")
+                        # Send final message to client
+                        final_message = {
+                            "type": "audio_complete",
+                            "message": "Audio streaming complete"
+                        }
+                        await websocket.send_text(json.dumps(final_message))
+                        print("Sent audio completion message to client")
+                        break
+                        
+            except websockets.exceptions.ConnectionClosed:
+                print("Murf WebSocket connection closed during streaming")
+                
+    except Exception as e:
+        print(f"Error in TTS streaming to client: {e}")
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -240,10 +318,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"\nConverting to speech: '{accumulated_response[:50]}{'...' if len(accumulated_response) > 50 else ''}'")
                     
                     try:
-                        # Use streaming TTS with Murf WebSocket
-                        base64_audio = await tts_service.generate_streaming_speech(accumulated_response)
-                        print(f"TTS Complete - Base64 Audio Length: {len(base64_audio)} characters")
-                        print(f"Base64 Audio Data: {base64_audio}")
+                        # Use streaming TTS with Murf WebSocket and stream to client
+                        await stream_tts_to_client(websocket, accumulated_response)
                         
                     except Exception as tts_error:
                         print(f"TTS Error: {tts_error}")

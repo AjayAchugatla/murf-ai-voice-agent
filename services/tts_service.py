@@ -60,39 +60,62 @@ class TTSService:
         voice = voice_id or self.default_voice_id
         
         try:
-            # Connect to Murf's WebSocket streaming endpoint
-            # Note: Replace with actual Murf WebSocket URL when available
-            murf_ws_url = "wss://api.murf.ai/v1/speech/stream"  # Hypothetical URL
+            # Connect to Murf's WebSocket streaming endpoint with correct URL and auth
+            murf_ws_url = f"wss://api.murf.ai/v1/speech/stream-input?api-key={api_key}&sample_rate=44100&channel_type=MONO&format=WAV"
             
-            # Create WebSocket connection with authentication
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            async with websockets.connect(murf_ws_url, additional_headers=headers) as websocket:
-                # Send TTS request
-                request_data = {
-                    "text": text,
-                    "voice_id": voice,
-                    "format": "mp3",
-                    "sample_rate": 22050
+            async with websockets.connect(murf_ws_url) as websocket:
+                # Send voice configuration first
+                voice_config_msg = {
+                    "voice_config": {
+                        "voiceId": voice,
+                        "style": "Conversational",
+                        "rate": 0,
+                        "pitch": 0,
+                        "variation": 1
+                    }
                 }
+                await websocket.send(json.dumps(voice_config_msg))
+                print(f"Sent voice config to Murf WebSocket")
                 
-                await websocket.send(json.dumps(request_data))
-                print(f" Sent TTS request to Murf: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+                # Send text message
+                text_msg = {
+                    "text": text,
+                    "end": True  # This closes the context
+                }
+                await websocket.send(json.dumps(text_msg))
+                print(f"Sent text to Murf WebSocket: '{text[:50]}{'...' if len(text) > 50 else ''}'")
                 
-                # Receive the audio response
-                response = await websocket.recv()
-                response_data = json.loads(response)
+                # Collect all audio chunks
+                audio_chunks = []
+                try:
+                    while True:
+                        response = await websocket.recv()
+                        data = json.loads(response)
+                        print(f"Received from Murf: {data.keys() if isinstance(data, dict) else 'non-dict response'}")
+                        
+                        if "audio" in data:
+                            audio_chunk = data["audio"]
+                            audio_chunks.append(audio_chunk)
+                            print(f"Received audio chunk ({len(audio_chunk)} characters)")
+                            print(f"Audio chunk preview: {audio_chunk[:100]}...")  # Print first 100 chars
+                        
+                        if data.get("final"):
+                            print("Received final audio chunk")
+                            break
+                            
+                except websockets.exceptions.ConnectionClosed:
+                    print("Murf WebSocket connection closed")
                 
-                if response_data.get("status") == "success" and response_data.get("audio_base64"):
-                    base64_audio = response_data["audio_base64"]
-                    print(f" Received base64 audio from Murf ({len(base64_audio)} characters)")
-                    print(f"Base64 Audio: {base64_audio[:100]}...")  # Print first 100 chars
-                    return base64_audio
+                # Combine all audio chunks
+                if audio_chunks:
+                    combined_base64 = ''.join(audio_chunks)
+                    print(f"Combined audio: {len(combined_base64)} characters")
+                    print(f"Complete Base64 Audio Data:")
+                    print(f"{combined_base64}")
+                    print(f"Base64 Audio Preview (first 200 chars): {combined_base64[:200]}...")
+                    return combined_base64
                 else:
-                    raise Exception(f"Murf TTS error: {response_data.get('error', 'Unknown error')}")
+                    raise Exception("No audio received from Murf WebSocket")
                     
         except websockets.exceptions.ConnectionClosed as e:
             print(f"Murf WebSocket connection closed: {e}")
