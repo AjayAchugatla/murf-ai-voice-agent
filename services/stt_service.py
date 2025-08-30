@@ -1,5 +1,6 @@
 import assemblyai as aai
 import os
+import tempfile
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -31,11 +32,28 @@ class STTService:
         if len(audio_data) == 0:
             raise Exception("Empty audio file")
         
-        transcript = self.transcriber.transcribe(audio_data)
+        # Save bytes to temporary file since AssemblyAI expects file path
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_file_path = temp_file.name
         
-        if not transcript.text:
-            raise Exception("Could not transcribe audio")
-        
-        return transcript.text
+        try:
+            # Transcribe using file path
+            transcript = self.transcriber.transcribe(temp_file_path)
+            
+            if transcript.error:
+                raise Exception(f"Transcription failed: {transcript.error}")
+            
+            if not transcript.text:
+                raise Exception("Could not transcribe audio - no text returned")
+            
+            return transcript.text
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
 
 stt_service = STTService()

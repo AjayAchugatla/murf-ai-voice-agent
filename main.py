@@ -103,13 +103,13 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
             error_audio_url = await generate_error_voice(error_message)
             return JSONResponse(
                 status_code=500,
-                content=ErrorResponse(
-                    error="STT failed",
-                    message=error_message,
-                    query="Audio transcription failed",
-                    response=error_message,
-                    audio_url=error_audio_url
-                )
+                content={
+                    "error": "STT failed",
+                    "message": error_message,
+                    "query": "Audio transcription failed",
+                    "response": error_message,
+                    "audio_url": error_audio_url
+                }
             )
         try:
             if session_id in sessionStorage:
@@ -162,11 +162,11 @@ async def agent_chat(session_id: str, audioFile: UploadFile = File(...)):
         error_audio_url = await generate_error_voice(error_message)
         return JSONResponse(
             status_code=500,
-            content=ErrorResponse(
-                error="Service temporarily unavailable",
-                message=error_message,
-                query="Error processing request",
-                response=error_message,
-                audio_url=error_audio_url
-            )
+            content={
+                "error": "Service temporarily unavailable",
+                "message": error_message,
+                "query": "Error processing request",
+                "response": error_message,
+                "audio_url": error_audio_url
+            }
         )
