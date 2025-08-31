@@ -1,289 +1,403 @@
-// DOM Elements
-const recordButton = document.getElementById('recordButton');
-const responseAudioElement = document.getElementById('responseAudio');
-const conversationHistory = document.getElementById('conversationHistory');
+document.addEventListener("DOMContentLoaded", () => {
+    let audioContext = null;
+    let source = null;
+    let processor = null;
+    let isRecording = false;
+    let socket = null;
+    let heartbeatInterval = null;
 
-// State variables
-let mediaRecorder;
-let isRecording = false;
-let isProcessing = false;
-let isSpeaking = false;
-let chunks = [];
+    let audioQueue = [];
+    let isPlaying = false;
+    let currentAiMessageContentElement = null;
+    let audioChunkIndex = 0;
 
-// Utility functions
-function showError(message) {
-    console.error(message);
-    alert(message);
-}
+    // Keep a reference to the current audio source
+    let currentAudioSource = null;
 
-// Message management
-function addMessageToHistory(message, isUser = true) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+    // Store API keys
+    let apiKeys = {
+        gemini: "",
+        assemblyai: "",
+        murf: "",
+        tavily: "",
+    };
 
-    // Clean markdown formatting for AI messages
-    const cleanedMessage = isUser ? message :
-        message.replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/\*(.*?)\*/g, '$1')
-            .replace(/__(.*?)__/g, '$1')
-            .replace(/_(.*?)_/g, '$1')
-            .replace(/`(.*?)`/g, '$1')
-            .replace(/#{1,6}\s/g, '')
-            .replace(/^\s*[-*+]\s/gm, '')
-            .replace(/^\s*\d+\.\s/gm, '')
-            .trim();
+    const recordBtn = document.getElementById("recordBtn");
+    const statusDisplay = document.getElementById("statusDisplay");
+    const chatDisplay = document.getElementById("chatDisplay");
+    const chatContainer = document.getElementById("chatContainer");
+    const clearBtnContainer = document.getElementById("clearBtnContainer");
+    const clearBtn = document.getElementById("clearBtn");
 
-    messageDiv.textContent = cleanedMessage;
+    // Config elements
+    const configBtn = document.getElementById("configBtn");
+    const configModal = document.getElementById("configModal");
+    const configOverlay = document.getElementById("configOverlay");
+    const configSaveBtn = document.getElementById("configSaveBtn");
+    const configCloseBtn = document.getElementById("configCloseBtn");
+    const configCancelBtn = document.getElementById("configCancelBtn");
 
-    // Remove placeholder if it exists
-    const placeholder = conversationHistory.querySelector('.conversation-placeholder');
-    if (placeholder) {
-        placeholder.remove();
-    }
-
-    conversationHistory.appendChild(messageDiv);
-    conversationHistory.scrollTop = conversationHistory.scrollHeight;
-}
-
-function clearConversationHistory() {
-    conversationHistory.innerHTML = `
-        <div class="conversation-placeholder">
-            <p>Your conversation will appear here...</p>
-        </div>
+    // Status management
+    const updateStatus = (status, message) => {
+        statusDisplay.className = `status-indicator status-${status}`;
+        statusDisplay.innerHTML = `
+      <div style="width: 8px; height: 8px; background: currentColor; border-radius: 50%;"></div>
+      <span>${message}</span>
     `;
-}
+    };
 
-// Button state management
-function updateButtonState(state) {
-    if (!recordButton) return;
+    // API Configuration
+    const openConfigModal = () => {
+        document.getElementById("geminiKey").value = apiKeys.gemini || "";
+        document.getElementById("assemblyaiKey").value = apiKeys.assemblyai || "";
+        document.getElementById("murfKey").value = apiKeys.murf || "";
+        document.getElementById("tavilyKey").value = apiKeys.tavily || "";
 
-    const btnIcon = recordButton.querySelector('.btn-icon');
-    const btnText = recordButton.querySelector('.btn-text');
-
-    if (!btnIcon || !btnText) return;
-
-    recordButton.className = 'record-btn';
-
-    switch (state) {
-        case 'idle':
-            btnIcon.textContent = '🎤';
-            btnText.textContent = 'Start Recording';
-            recordButton.disabled = false;
-            isRecording = false;
-            isProcessing = false;
-            isSpeaking = false;
-            break;
-        case 'recording':
-            btnIcon.textContent = '⏹️';
-            btnText.textContent = 'Stop Recording';
-            recordButton.classList.add('recording');
-            recordButton.disabled = false;
-            isRecording = true;
-            isProcessing = false;
-            break;
-        case 'processing':
-            btnIcon.textContent = '⏳';
-            btnText.textContent = 'Processing...';
-            recordButton.classList.add('processing');
-            recordButton.disabled = true;
-            isRecording = false;
-            isProcessing = true;
-            break;
-        case 'speaking':
-            btnIcon.textContent = '🔊';
-            btnText.textContent = 'AI Speaking...';
-            recordButton.classList.add('processing');
-            recordButton.disabled = true;
-            isRecording = false;
-            isProcessing = true;
-            isSpeaking = true;
-            break;
-    }
-}
-
-// Recording functions
-function toggleRecording() {
-    if (isProcessing || isSpeaking) return;
-
-    if (!isRecording) {
-        startRecording();
-    } else {
-        stopRecording();
-    }
-}
-
-function startRecording() {
-    updateButtonState('recording');
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-        showError("Audio recording is not supported in your browser. Please use a modern browser like Chrome or Firefox.");
-        updateButtonState('idle');
-        return;
-    }
-
-    navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then((stream) => {
-            try {
-                mediaRecorder = new MediaRecorder(stream);
-
-                mediaRecorder.onstop = async () => {
-                    updateButtonState('processing');
-
-                    try {
-                        const blob = new Blob(chunks, { type: "audio/webm" });
-                        chunks = [];
-
-                        if (blob.size === 0) {
-                            throw new Error("Recording produced no audio data");
-                        }
-
-                        await agentChat(blob);
-
-                    } catch (error) {
-                        console.error("Error processing recording:", error);
-                        showError("Failed to process your recording. Please try again.");
-                        updateButtonState('idle');
-                    } finally {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                };
-
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        chunks.push(e.data);
-                    }
-                };
-
-                mediaRecorder.onerror = (error) => {
-                    console.error("MediaRecorder error:", error);
-                    showError("Recording failed. Please check your microphone permissions.");
-                    updateButtonState('idle');
-                    stream.getTracks().forEach(track => track.stop());
-                };
-
-                mediaRecorder.start();
-
-            } catch (error) {
-                console.error("MediaRecorder creation failed:", error);
-                showError("Could not start recording. Please check your microphone permissions.");
-                updateButtonState('idle');
-                stream.getTracks().forEach(track => track.stop());
+        configModal.style.display = "block";
+        setTimeout(() => {
+            configModal.style.opacity = "1";
+            const modalContent = configModal.querySelector(".glass-effect");
+            if (modalContent) {
+                modalContent.style.transform = "scale(1)";
             }
-        })
-        .catch((err) => {
-            console.error(`getUserMedia error: ${err}`);
-            let errorMessage = "Could not access your microphone. ";
+        }, 10);
+    };
 
-            if (err.name === 'NotAllowedError') {
-                errorMessage += "Please allow microphone access and try again.";
-            } else if (err.name === 'NotFoundError') {
-                errorMessage += "No microphone found. Please connect a microphone.";
+    const closeConfigModal = () => {
+        configModal.style.opacity = "0";
+        const modalContent = configModal.querySelector(".glass-effect");
+        if (modalContent) {
+            modalContent.style.transform = "scale(0.95)";
+        }
+        setTimeout(() => {
+            configModal.style.display = "none";
+        }, 300);
+    };
+
+    const saveApiKeys = () => {
+        const newKeys = {
+            gemini: document.getElementById("geminiKey").value.trim(),
+            assemblyai: document.getElementById("assemblyaiKey").value.trim(),
+            murf: document.getElementById("murfKey").value.trim(),
+            tavily: document.getElementById("tavilyKey").value.trim(),
+        };
+
+        Object.keys(newKeys).forEach((key) => {
+            if (newKeys[key]) {
+                localStorage.setItem(`api_key_${key}`, newKeys[key]);
+                apiKeys[key] = newKeys[key];
             } else {
-                errorMessage += "Please check your microphone settings.";
+                localStorage.removeItem(`api_key_${key}`);
+                apiKeys[key] = "";
             }
-
-            showError(errorMessage);
-            updateButtonState('idle');
-        });
-}
-
-function stopRecording() {
-    if (mediaRecorder?.state === 'recording') {
-        mediaRecorder.stop();
-    }
-}
-
-// Agent communication
-async function agentChat(blob) {
-    const formData = new FormData();
-    formData.append('audioFile', blob, 'agent_chat_audio.webm');
-    const sessionId = '1';
-
-    try {
-        const response = await fetch(`http://localhost:8000/agent/chat/${sessionId}`, {
-            method: "POST",
-            body: formData
         });
 
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "update_api_keys", keys: newKeys }));
         }
 
-        const data = await response.json();
+        updateConfigStatus();
+        closeConfigModal();
 
-        if (data.audio_url) {
-            // Add messages to conversation history
-            if (data.query) {
-                addMessageToHistory(data.query, true);
+        showNotification("⚓ Keys Saved", "Yer API keys be updated, matey!", "success");
+    };
+
+    const loadApiKeys = () => {
+        Object.keys(apiKeys).forEach((key) => {
+            const stored = localStorage.getItem(`api_key_${key}`);
+            if (stored) apiKeys[key] = stored;
+        });
+        updateConfigStatus();
+    };
+
+    const updateConfigStatus = () => {
+        const indicators = {
+            gemini: document.getElementById("geminiStatus"),
+            assemblyai: document.getElementById("assemblyaiStatus"),
+            murf: document.getElementById("murfStatus"),
+            tavily: document.getElementById("tavilyStatus"),
+        };
+
+        Object.keys(indicators).forEach((key) => {
+            if (indicators[key]) {
+                const hasKey = !!apiKeys[key];
+                indicators[key].style.background = hasKey ? "#10b981" : "#f87171";
+                indicators[key].title = hasKey ? `${key} configured` : `${key} not configured`;
             }
-            if (data.response) {
-                addMessageToHistory(data.response, false);
+        });
+    };
+
+    // Stop current playback
+    const stopCurrentPlayback = () => {
+        console.log("🤫 Astra: Quiet now, I be stoppin’ me voice, matey!");
+        if (currentAudioSource) {
+            currentAudioSource.stop();
+            currentAudioSource = null;
+        }
+        audioQueue = [];
+        isPlaying = false;
+    };
+
+    // Play chunks
+    const playNextChunk = () => {
+        if (!audioQueue.length || !audioContext || audioContext.state === "closed") {
+            if (isPlaying) {
+                console.log("✅ Astra: Arrr, all me audio be spoken!");
             }
+            isPlaying = false;
+            currentAudioSource = null;
+            return;
+        }
 
-            responseAudioElement.src = data.audio_url;
+        console.log(`➡️ Astra: Playing me next audio chunk. ${audioQueue.length - 1} left in the queue.`);
+        isPlaying = true;
+        const chunk = audioQueue.shift();
 
-            responseAudioElement.onerror = () => {
-                console.error('Audio playback failed');
-                isSpeaking = false;
-                updateButtonState('idle');
-            };
+        audioContext.decodeAudioData(
+            chunk,
+            (buffer) => {
+                const sourceNode = audioContext.createBufferSource();
+                sourceNode.buffer = buffer;
+                sourceNode.connect(audioContext.destination);
+                sourceNode.start();
 
-            responseAudioElement.onended = () => {
-                isSpeaking = false;
-                updateButtonState('idle');
+                currentAudioSource = sourceNode;
+                sourceNode.onended = () => {
+                    currentAudioSource = null;
+                    playNextChunk();
+                };
+            },
+            (error) => {
+                console.error("☠️ Error decoding audio data:", error);
+                playNextChunk();
+            }
+        );
+    };
 
-                // Auto-start next recording after AI response finishes
-                setTimeout(() => {
-                    if (!isRecording && !isProcessing && !isSpeaking) {
-                        startRecording();
-                    }
-                }, 500);
-            };
+    const startRecording = async () => {
+        console.log("🎤 Astra: Hoist the mic, matey! Let’s be talkin’ now.");
 
+        if (!apiKeys.assemblyai || !apiKeys.gemini || !apiKeys.murf) {
+            showNotification("Missing Keys", "Ye be needin’ all yer API keys!", "error");
+            openConfigModal();
+            return;
+        }
+
+        if (!audioContext) {
             try {
-                updateButtonState('speaking');
-                await responseAudioElement.play();
-            } catch (playError) {
-                console.error('Audio play error:', playError);
-                isSpeaking = false;
-                updateButtonState('idle');
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                alert("Yer browser be not supportin’ the Web Audio API.");
+                return;
             }
-        } else {
-            throw new Error('No audio response received');
         }
 
-    } catch (error) {
-        console.error('Error in agent chat:', error);
-        showError('Failed to process your request. Please try again.');
-        updateButtonState('idle');
-    }
-}
+        if (audioContext.state === "suspended") await audioContext.resume();
 
-// Conversation control
-function stopConversation() {
-    if (mediaRecorder?.state === 'recording') {
-        mediaRecorder.onstop = null;
-        mediaRecorder.stop();
-    }
+        if (!navigator.mediaDevices?.getUserMedia) {
+            alert("No mic available, matey!");
+            return;
+        }
 
-    if (responseAudioElement && !responseAudioElement.paused) {
-        responseAudioElement.pause();
-        responseAudioElement.currentTime = 0;
-    }
+        isRecording = true;
+        updateUIForRecording(true);
 
-    isSpeaking = false;
-    updateButtonState('idle');
-    clearConversationHistory();
+        try {
+            const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
-    if (mediaRecorder?.stream) {
-        mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    }
+            socket.onopen = async () => {
+                console.log("🔌 Astra: Arrr! WebSocket be open, ready fer chat!");
+                updateStatus("connecting", "Establishing Connection...");
 
-    alert('Conversation stopped');
-}
+                socket.send(JSON.stringify({ type: "update_api_keys", keys: apiKeys }));
+                heartbeatInterval = setInterval(() => {
+                    if (socket?.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ type: "ping" }));
+                    }
+                }, 25000);
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    updateButtonState('idle');
+                socket.send(JSON.stringify({ type: "start_transcription" }));
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    source = audioContext.createMediaStreamSource(stream);
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    processor.onaudioprocess = (event) => {
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        const targetSampleRate = 16000;
+                        const sourceSampleRate = audioContext.sampleRate;
+                        const ratio = sourceSampleRate / targetSampleRate;
+                        const newLength = Math.floor(inputData.length / ratio);
+                        const downsampledData = new Float32Array(newLength);
+                        for (let i = 0; i < newLength; i++) {
+                            downsampledData[i] = inputData[Math.floor(i * ratio)];
+                        }
+                        const pcmData = new Int16Array(downsampledData.length);
+                        for (let i = 0; i < pcmData.length; i++) {
+                            const sample = Math.max(-1, Math.min(1, downsampledData[i]));
+                            pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+                        }
+                        if (socket?.readyState === WebSocket.OPEN) {
+                            socket.send(pcmData.buffer);
+                        }
+                    };
+
+                    source.connect(processor);
+                    processor.connect(audioContext.destination);
+                    recordBtn.mediaStream = stream;
+
+                    updateStatus("listening", "Listening...");
+                } catch (micError) {
+                    alert("☠️ No access to the mic, matey!");
+                    await stopRecording();
+                }
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                switch (data.type) {
+                    case "transcription":
+                        if (data.end_of_turn && data.text) {
+                            addToChatLog(data.text, "user");
+                            updateStatus("thinking", "Processing...");
+                            currentAiMessageContentElement = null;
+                        }
+                        break;
+                    case "llm_chunk":
+                        if (data.data) {
+                            if (!currentAiMessageContentElement) {
+                                currentAiMessageContentElement = addToChatLog("", "ai");
+                            }
+                            currentAiMessageContentElement.textContent += data.data;
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+                        }
+                        break;
+                    case "audio_start":
+                        updateStatus("speaking", "Talkin’ back, matey...");
+                        audioQueue = [];
+                        audioChunkIndex = 0;
+                        break;
+                    case "audio_interrupt":
+                        stopCurrentPlayback();
+                        updateStatus("listening", "Listening...");
+                        break;
+                    case "audio":
+                        if (data.data) {
+                            const audioData = atob(data.data);
+                            const byteNumbers = new Array(audioData.length);
+                            for (let i = 0; i < audioData.length; i++) {
+                                byteNumbers[i] = audioData.charCodeAt(i);
+                            }
+                            const byteArray = new Uint8Array(byteNumbers);
+                            audioQueue.push(byteArray.buffer);
+                            if (!isPlaying) playNextChunk();
+                        }
+                        break;
+                    case "audio_end":
+                        updateStatus("listening", "Listening...");
+                        break;
+                    case "error":
+                        updateStatus("error", `Error: ${data.message}`);
+                        showNotification("Error", data.message, "error");
+                        break;
+                }
+            };
+
+            socket.onclose = () => {
+                updateStatus("ready", "Connection Closed");
+                console.log("💔 Astra: Our connection be sunk, matey.");
+                stopRecording(false);
+            };
+        } catch (err) {
+            alert("☠️ Failed to start recording session, matey!");
+            await stopRecording();
+        }
+    };
+
+    const stopRecording = async () => {
+        if (!isRecording) return;
+        console.log("🛑 Astra: I be stoppin’ the recordin’, matey!");
+        isRecording = false;
+        stopCurrentPlayback();
+        if (processor) processor.disconnect();
+        if (source) source.disconnect();
+        if (recordBtn.mediaStream) {
+            recordBtn.mediaStream.getTracks().forEach((track) => track.stop());
+            recordBtn.mediaStream = null;
+        }
+        if (socket?.readyState === WebSocket.OPEN) socket.close();
+        socket = null;
+        updateUIForRecording(false);
+    };
+
+    const updateUIForRecording = (isRec) => {
+        if (isRec) {
+            recordBtn.classList.add("recording");
+            chatDisplay.style.display = "block";
+        } else {
+            recordBtn.classList.remove("recording");
+            updateStatus("ready", "Ready to Connect");
+        }
+    };
+
+    const addToChatLog = (text, sender) => {
+        const messageElement = document.createElement("div");
+        messageElement.className = `chat-message ${sender === "user" ? "user-message" : "ai-message"}`;
+
+        const prefixDiv = document.createElement("div");
+        prefixDiv.className = `message-prefix ${sender === "user" ? "user-prefix" : "ai-prefix"}`;
+        prefixDiv.textContent = sender === "user" ? "You" : "Astra 🏴‍☠️";
+
+        const contentSpan = document.createElement("div");
+        contentSpan.className = "message-content";
+        contentSpan.textContent = text;
+
+        messageElement.appendChild(prefixDiv);
+        messageElement.appendChild(contentSpan);
+        chatContainer.appendChild(messageElement);
+
+        // Hide empty state when first message is added
+        const emptyState = document.querySelector('.chat-empty-state');
+        if (emptyState && chatContainer.children.length > 0) {
+            emptyState.style.display = 'none';
+        }
+
+        if (chatContainer.children.length > 0) {
+            clearBtn.style.display = "inline-flex";
+        }
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        return contentSpan;
+    };
+
+    clearBtn.addEventListener("click", () => {
+        chatContainer.innerHTML = "";
+        clearBtn.style.display = "none";
+
+        // Show empty state when chat is cleared
+        const emptyState = document.querySelector('.chat-empty-state');
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+        }
+    });
+
+    recordBtn.addEventListener("click", () => {
+        if (isRecording) stopRecording();
+        else startRecording();
+    });
+
+    configBtn.addEventListener("click", openConfigModal);
+    configCloseBtn.addEventListener("click", closeConfigModal);
+    configCancelBtn.addEventListener("click", closeConfigModal);
+    configSaveBtn.addEventListener("click", saveApiKeys);
+    configOverlay.addEventListener("click", closeConfigModal);
+
+    window.addEventListener("beforeunload", () => {
+        if (isRecording) stopRecording();
+    });
+
+    loadApiKeys();
+    clearBtn.style.display = "none";
 });

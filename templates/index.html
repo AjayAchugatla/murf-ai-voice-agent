@@ -4,45 +4,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Agent</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="static/style.css">
+    <title>Astra - AI Voice Agent</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
-    <div class="main-container">
-        <!-- Voice Agent UI -->
-        <div class="voice-agent-section">
-            <div class="container">
-                <h1>Voice Agent</h1>
-                <div class="button-section">
-                    <button id="recordButton" onclick="toggleRecording()" class="record-btn">
-                        <span class="btn-icon">🎤</span>
-                        <span class="btn-text">Start Recording</span>
-                    </button>
-                    <button id="stopConversation" onclick="stopConversation()" class="stop-btn">
-                        Stop Conversation
-                    </button>
-                </div>
-                <audio id="responseAudio" class="hidden" autoplay></audio>
-            </div>
+    <!-- Settings Button -->
+    <button id="configBtn" class="settings-button" title="API Configuration">
+        <svg class="settings-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+            </path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
+            </path>
+        </svg>
+        <div class="api-indicators">
+            <div id="geminiStatus" class="api-status" title="Gemini not configured"></div>
+            <div id="assemblyaiStatus" class="api-status" title="AssemblyAI not configured"></div>
+            <div id="murfStatus" class="api-status" title="Murf not configured"></div>
+            <div id="tavilyStatus" class="api-status" title="Tavily not configured"></div>
         </div>
+    </button>
 
-        <!-- Conversation History -->
-        <div class="conversation-section">
-            <div class="conversation-container">
-                <h2>Conversation</h2>
-                <div id="conversationHistory" class="conversation-history">
-                    <div class="conversation-placeholder">
-                        <p>Your conversation will appear here...</p>
+    <!-- Murf Branding -->
+    <a href="https://murf.ai/api/docs/introduction/overview" target="_blank" rel="noopener noreferrer"
+        class="murf-branding" title="Powered by Murf AI - Text-to-Speech API">
+        <div class="murf-badge">
+            <svg class="murf-icon" fill="currentColor" viewBox="0 0 24 24">
+                <path
+                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+            </svg>
+            <span class="murf-text">Powered by</span>
+            <span class="murf-brand">Murf</span>
+        </div>
+    </a>
+
+    <!-- Main Container -->
+    <div class="app-layout">
+        <!-- Left Panel - Voice Interface -->
+        <div class="left-panel">
+            <div class="voice-card">
+                <!-- Header -->
+                <div class="header">
+                    <h1 class="logo">Astra</h1>
+                    <p class="subtitle">AI Voice Assistant</p>
+                </div>
+
+                <!-- Voice Interface -->
+                <div class="voice-interface">
+                    <!-- Status Display -->
+                    <div class="status-section">
+                        <div id="statusDisplay" class="status-indicator status-ready">
+                            <div class="status-dot"></div>
+                            <span>Ready to Connect</span>
+                        </div>
+                    </div>
+
+                    <!-- Recording Button -->
+                    <div class="record-section">
+                        <button id="recordBtn" class="record-button">
+                            <svg class="record-icon" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                                <path
+                                    d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Right Panel - Conversation History -->
+        <div class="right-panel">
+            <div id="chatDisplay" class="chat-panel">
+                <div class="chat-header">
+                    <span class="chat-title">Conversation History</span>
+                    <button id="clearBtn" class="clear-button">
+                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+                <div id="chatContainer" class="chat-container">
+                    <!-- Chat messages will be inserted here -->
+                </div>
+                <div class="chat-empty-state">
+                    <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <p>Your conversation will appear here</p>
+                    <small>Start by clicking the microphone button</small>
+                </div>
+            </div>
+        </div>
     </div>
-    <script src="static/script.js"></script>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="config-modal">
+        <div id="configOverlay" class="modal-overlay"></div>
+        <div class="modal-container">
+            <div class="modal-content">
+                <!-- Modal Header -->
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title">API Configuration</div>
+                        <div class="modal-subtitle">Configure your API keys for Astra services</div>
+                    </div>
+                    <button id="configCloseBtn" class="modal-close">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="modal-body">
+                    <!-- Gemini AI -->
+                    <div class="config-group">
+                        <div class="config-label">
+                            <div class="service-icon gemini-icon">
+                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                </svg>
+                            </div>
+                            Google Gemini AI
+                        </div>
+                        <div class="config-description">Language model for intelligent responses</div>
+                        <input type="password" id="geminiKey" class="config-input"
+                            placeholder="Enter your Gemini API key...">
+                    </div>
+
+                    <!-- AssemblyAI -->
+                    <div class="config-group">
+                        <div class="config-label">
+                            <div class="service-icon assembly-icon">
+                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                                    <path
+                                        d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                                </svg>
+                            </div>
+                            AssemblyAI
+                        </div>
+                        <div class="config-description">Speech-to-text transcription service</div>
+                        <input type="password" id="assemblyaiKey" class="config-input"
+                            placeholder="Enter your AssemblyAI API key...">
+                    </div>
+
+                    <!-- Murf AI -->
+                    <div class="config-group">
+                        <div class="config-label">
+                            <div class="service-icon murf-icon-service">
+                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                                </svg>
+                            </div>
+                            Murf AI
+                        </div>
+                        <div class="config-description">Text-to-speech voice synthesis</div>
+                        <input type="password" id="murfKey" class="config-input"
+                            placeholder="Enter your Murf AI API key...">
+                    </div>
+
+                    <!-- Tavily -->
+                    <div class="config-group">
+                        <div class="config-label">
+                            <div class="service-icon tavily-icon">
+                                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                                </svg>
+                            </div>
+                            Tavily AI
+                        </div>
+                        <div class="config-description">Web search and research capabilities (optional)</div>
+                        <input type="password" id="tavilyKey" class="config-input"
+                            placeholder="Enter your Tavily API key...">
+                    </div>
+
+                    <!-- Info Box -->
+                    <div class="info-box">
+                        <svg class="info-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd"
+                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        <div class="info-content">
+                            <div class="info-title">Secure Storage</div>
+                            API keys are stored locally in your browser and sent securely to the server for this session
+                            only.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="modal-footer">
+                    <button id="configCancelBtn" class="modal-button secondary">Cancel</button>
+                    <button id="configSaveBtn" class="modal-button primary">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
 </body>
 
 </html>
