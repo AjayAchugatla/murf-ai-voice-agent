@@ -647,20 +647,6 @@ async def websocket_audio_streaming(websocket: WebSocket):
         if event.end_of_turn and event.turn_is_formatted and transcript_text and transcript_text != last_processed_transcript:
             last_processed_transcript = transcript_text
             
-<<<<<<< HEAD
-        except Exception as e:            
-            error_message = FALLBACK_RESPONSES["stt_error"]
-            error_audio_url = await generate_error_voice(error_message)
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": "STT failed",
-                    "message": error_message,
-                    "query": "Audio transcription failed",
-                    "response": error_message,
-                    "audio_url": error_audio_url
-                }
-=======
             if llm_task and not llm_task.done():
                 logging.warning("User interrupted while previous response was generating. Cancelling task.")
                 llm_task.cancel()
@@ -676,7 +662,6 @@ async def websocket_audio_streaming(websocket: WebSocket):
             llm_task = asyncio.run_coroutine_threadsafe(
                 get_llm_response_stream(transcript_text, websocket, chat_history, session_api_keys), 
                 main_loop
->>>>>>> streaming
             )
             
         elif transcript_text and transcript_text == last_processed_transcript:
@@ -691,7 +676,18 @@ async def websocket_audio_streaming(websocket: WebSocket):
 
     try:
         while True:
-            message = await websocket.receive()
+            try:
+                # Add timeout to receive to detect disconnected clients faster
+                message = await asyncio.wait_for(websocket.receive(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # Send ping to check if client is still connected
+                try:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    continue
+                except Exception:
+                    logging.info("Client appears to be disconnected (ping failed)")
+                    break
+                    
             if "text" in message:
                 try:
                     data = json.loads(message['text'])
@@ -763,43 +759,44 @@ async def websocket_audio_streaming(websocket: WebSocket):
     except Exception as e:
         logging.error(f"WebSocket error: {e}", exc_info=True)
     finally:
-        if llm_task and not llm_task.done():
-            llm_task.cancel()
         logging.info("Cleaning up connection resources.")
+        
+        # Cancel LLM task quickly
+        if llm_task and not llm_task.done():
+            try:
+                llm_task.cancel()
+                logging.debug("LLM task cancelled")
+            except Exception as e:
+                logging.error(f"Error cancelling LLM task: {e}")
+        
+        # Disconnect AssemblyAI client with timeout
         if client:
             try:
-<<<<<<< HEAD
-                audio_url = await generate_error_voice(FALLBACK_RESPONSES["tts_error"])
-            except:
-                audio_url = FALLBACK_AUDIO_URL
-        
-        return AgentChatResponse(
-            query=user_message,
-            response=llm_response,
-            audio_url=audio_url
-        )
-        
-    except Exception as e:        
-        error_message = FALLBACK_RESPONSES["general_error"]
-        error_audio_url = await generate_error_voice(error_message)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "Service temporarily unavailable",
-                "message": error_message,
-                "query": "Error processing request",
-                "response": error_message,
-                "audio_url": error_audio_url
-            }
-        )
-=======
-                client.disconnect()
+                # Use asyncio.wait_for with a simple task
+                async def disconnect_client():
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, client.disconnect)
+                
+                await asyncio.wait_for(disconnect_client(), timeout=2.0)
+                logging.debug("AssemblyAI client disconnected")
+            except asyncio.TimeoutError:
+                logging.warning("AssemblyAI disconnect timed out after 2 seconds")
             except Exception as e:
                 logging.error(f"Error disconnecting AssemblyAI client: {e}")
-        if websocket.client_state.name != 'DISCONNECTED':
-            await websocket.close()
+        
+        # Close WebSocket with timeout
+        try:
+            if websocket.client_state.name != 'DISCONNECTED':
+                close_task = asyncio.create_task(websocket.close())
+                await asyncio.wait_for(close_task, timeout=1.0)
+                logging.debug("WebSocket closed")
+        except asyncio.TimeoutError:
+            logging.warning("WebSocket close timed out after 1 second")
+        except Exception as e:
+            logging.error(f"Error closing WebSocket: {e}")
+        
+        logging.info("Connection cleanup completed")
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
->>>>>>> streaming
